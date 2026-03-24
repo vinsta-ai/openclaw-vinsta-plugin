@@ -20,6 +20,7 @@ import {
 } from "./vinsta-client.js";
 import { screenInbound, screenOutbound } from "./content-guard.js";
 import {
+  discoverNotifyTargetsFromOpenClawConfig,
   maybeSanitizeHumanNotificationForDelivery,
   readNotificationAutomationState,
   shouldSuppressFreshHumanNotificationForBridgeCommand,
@@ -460,7 +461,7 @@ async function dispatchHumanNotificationViaOpenClaw(
       delivered += 1;
     } catch (error) {
       api.logger.error(
-        `[vinsta-bridge] Failed to notify ${target.channel}:${target.to} for ${notification.id}: ${
+        `[vinsta] Failed to notify ${target.channel}:${target.to} for ${notification.id}: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
@@ -485,7 +486,7 @@ function dispatchHumanNotificationToOpenClawUi(
     contextKey: `vinsta:${notification.id}`,
   });
   api.logger.info(
-    `[vinsta-bridge] New ${notification.type.replace(/_/g, " ")} for @${config.handle}: ${notification.title}`,
+    `[vinsta] New ${notification.type.replace(/_/g, " ")} for @${config.handle}: ${notification.title}`,
   );
 }
 
@@ -505,16 +506,53 @@ async function dispatchHumanNotification(
 
   if (sanitized.redacted) {
     api.logger.info(
-      `[vinsta-bridge] Content guard redacted owner summary for ${notification.id}: ${
+      `[vinsta] Content guard redacted owner summary for ${notification.id}: ${
         sanitized.reason ?? "matched an outbound guard pattern"
       }`,
     );
   }
 
+  // Step 1: Explicit bridgeNotifyTargets
   if (await dispatchHumanNotificationViaOpenClaw(api, config, safeNotification)) {
     return;
   }
 
+  // Step 2: Saved origin channel from last tool invocation
+  if (
+    config.bridgeNotifyTargets.length === 0 &&
+    config.lastNotifyChannel &&
+    config.lastNotifyTarget
+  ) {
+    const originTarget = [
+      {
+        channel: config.lastNotifyChannel,
+        to: config.lastNotifyTarget,
+        accountId: config.lastNotifyAccountId,
+      },
+    ];
+    const originConfig = { ...config, bridgeNotifyTargets: originTarget };
+
+    if (await dispatchHumanNotificationViaOpenClaw(api, originConfig, safeNotification)) {
+      return;
+    }
+  }
+
+  // Step 3: Auto-discover from OpenClaw channel config
+  if (config.bridgeNotifyTargets.length === 0) {
+    const discovered = discoverNotifyTargetsFromOpenClawConfig(
+      api.runtime.config.loadConfig(),
+    );
+
+    if (discovered.length > 0) {
+      const autoConfig = { ...config, bridgeNotifyTargets: discovered };
+
+      if (await dispatchHumanNotificationViaOpenClaw(api, autoConfig, safeNotification)) {
+        return;
+      }
+    }
+  }
+
+  // Step 4: Legacy bridgeNotifyCommand
   if (config.bridgeNotifyCommand) {
     try {
       const result = await runBridgeNotifyCommand(
@@ -525,7 +563,7 @@ async function dispatchHumanNotification(
 
       if (result.exitCode !== 0) {
         api.logger.error(
-          `[vinsta-bridge] Notification command failed for ${notification.id} with exit ${result.exitCode}${
+          `[vinsta] Notification command failed for ${notification.id} with exit ${result.exitCode}${
             result.stderr ? `: ${result.stderr}` : ""
           }`,
         );
@@ -534,7 +572,7 @@ async function dispatchHumanNotification(
       }
     } catch (error) {
       api.logger.error(
-        `[vinsta-bridge] Failed to notify for ${notification.id}: ${
+        `[vinsta] Failed to notify for ${notification.id}: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
@@ -604,7 +642,7 @@ async function flushPendingCompletions(
       pendingCompletions.delete(completion.notificationId);
     } catch (error) {
       api.logger.error(
-        `[vinsta-bridge] Failed to complete pending notification ${completion.notificationId}: ${
+        `[vinsta] Failed to complete pending notification ${completion.notificationId}: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
@@ -672,7 +710,7 @@ async function processBridgeOnce(
       });
     } catch (error) {
       api.logger.error(
-        `[vinsta-bridge] Failed to release notification ${notification.id}: ${
+        `[vinsta] Failed to release notification ${notification.id}: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
@@ -736,7 +774,7 @@ async function processBridgeOnce(
 
       if (!claimedAt) {
         api.logger.error(
-          `[vinsta-bridge] Notification ${notification.id} was claimed without a read timestamp.`,
+          `[vinsta] Notification ${notification.id} was claimed without a read timestamp.`,
         );
         await client.releaseNotification({
           notificationId: notification.id,
@@ -757,7 +795,7 @@ async function processBridgeOnce(
 
         if (!inboundScreen.allowed) {
           api.logger.info(
-            `[vinsta-bridge] Content guard blocked inbound ${notification.id}: ${inboundScreen.reason}`,
+            `[vinsta] Content guard blocked inbound ${notification.id}: ${inboundScreen.reason}`,
           );
           commandCompleted = true;
           const blockedCompletion: PendingBridgeCompletion = {
@@ -786,7 +824,7 @@ async function processBridgeOnce(
           } catch (error) {
             pendingCompletions.set(notification.id, blockedCompletion);
             api.logger.error(
-              `[vinsta-bridge] Failed to complete blocked notification ${notification.id}: ${
+              `[vinsta] Failed to complete blocked notification ${notification.id}: ${
                 error instanceof Error ? error.message : String(error)
               }`,
             );
@@ -806,7 +844,7 @@ async function processBridgeOnce(
       if (result.exitCode !== 0) {
         await surfaceBridgeFailure(notification, claimedAt);
         api.logger.error(
-          `[vinsta-bridge] Command failed for ${notification.id} with exit ${result.exitCode}${
+          `[vinsta] Command failed for ${notification.id} with exit ${result.exitCode}${
             result.stderr ? `: ${result.stderr}` : ""
           }`,
         );
@@ -827,7 +865,7 @@ async function processBridgeOnce(
 
         if (!outboundScreen.allowed) {
           api.logger.info(
-            `[vinsta-bridge] Content guard blocked outbound for ${notification.id}: ${outboundScreen.reason}`,
+            `[vinsta] Content guard blocked outbound for ${notification.id}: ${outboundScreen.reason}`,
           );
           action.reply = config.bridgeContentGuardBlockMessage;
           action.notifyHuman = `Outbound reply blocked by content guard: ${outboundScreen.reason}`;
@@ -869,7 +907,7 @@ async function processBridgeOnce(
       } catch (error) {
         pendingCompletions.set(notification.id, pendingCompletion);
         api.logger.error(
-          `[vinsta-bridge] Failed to finalize notification ${notification.id}: ${
+          `[vinsta] Failed to finalize notification ${notification.id}: ${
             error instanceof Error ? error.message : String(error)
           }`,
         );
@@ -883,7 +921,7 @@ async function processBridgeOnce(
       }
 
       api.logger.error(
-        `[vinsta-bridge] ${error instanceof Error ? error.message : String(error)}`,
+        `[vinsta] ${error instanceof Error ? error.message : String(error)}`,
       );
     } finally {
       inFlight.delete(notification.id);
@@ -980,19 +1018,19 @@ export function createVinstaInboundBridge(api: OpenClawPluginApi) {
 
         if (lastStatus.active && lastStatus.notified > 0) {
           api.logger.info(
-            `[vinsta-bridge] Observed ${lastStatus.notified} new Vinsta inbox event(s) for @${lastStatus.handle}.`,
+            `[vinsta] Observed ${lastStatus.notified} new Vinsta inbox event(s) for @${lastStatus.handle}.`,
           );
         }
 
         if (lastStatus.active && lastStatus.processed > 0) {
           api.logger.info(
-            `[vinsta-bridge] Processed ${lastStatus.processed} inbound notification(s) for @${lastStatus.handle}.`,
+            `[vinsta] Processed ${lastStatus.processed} inbound notification(s) for @${lastStatus.handle}.`,
           );
         }
       } while (rerunRequested && !stopped);
     } catch (error) {
       api.logger.error(
-        `[vinsta-bridge] ${error instanceof Error ? error.message : String(error)}`,
+        `[vinsta] ${error instanceof Error ? error.message : String(error)}`,
       );
       throw error;
     } finally {
@@ -1081,7 +1119,7 @@ export function createVinstaInboundBridge(api: OpenClawPluginApi) {
         }
 
         api.logger.error(
-          `[vinsta-bridge] Notifications stream disconnected: ${
+          `[vinsta] Notifications stream disconnected: ${
             error instanceof Error ? error.message : String(error)
           }`,
         );

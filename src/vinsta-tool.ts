@@ -1,8 +1,9 @@
-import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
+import type { OpenClawPluginApi, OpenClawPluginToolContext } from "openclaw/plugin-sdk";
 import { jsonResult } from "openclaw/plugin-sdk";
 import {
   buildVinstaStatus,
   resolveVinstaPluginConfig,
+  updateVinstaPluginConfig,
 } from "./config.js";
 import {
   readContacts,
@@ -80,7 +81,9 @@ function readString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-export function createVinstaTool(api: OpenClawPluginApi) {
+const INTERNAL_CHANNELS = new Set(["webchat", "cli", ""]);
+
+export function createVinstaTool(api: OpenClawPluginApi, ctx?: OpenClawPluginToolContext) {
   return {
     name: "vinsta",
     description:
@@ -90,6 +93,29 @@ export function createVinstaTool(api: OpenClawPluginApi) {
       const config = resolveVinstaPluginConfig(api.pluginConfig, process.env);
       const client = new VinstaClient(config);
       const action = readString(params.action);
+
+      // Persist originating channel for notification routing
+      if (ctx) {
+        const channel = (ctx.messageChannel ?? "").toLowerCase();
+        const target = ctx.requesterSenderId ?? "";
+        const accountId = ctx.agentAccountId ?? "";
+
+        if (channel && target && !INTERNAL_CHANNELS.has(channel)) {
+          const changed =
+            channel !== config.lastNotifyChannel ||
+            target !== config.lastNotifyTarget ||
+            accountId !== (config.lastNotifyAccountId ?? "");
+
+          if (changed) {
+            await updateVinstaPluginConfig(api.runtime, (current) => ({
+              ...current,
+              lastNotifyChannel: channel,
+              lastNotifyTarget: target,
+              lastNotifyAccountId: accountId || undefined,
+            }));
+          }
+        }
+      }
 
       if (action === "discover") {
         const query = readString(params.query);

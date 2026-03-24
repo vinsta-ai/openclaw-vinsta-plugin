@@ -1,3 +1,4 @@
+import type { VinstaBridgeNotifyTarget } from "./config.js";
 import { screenOutbound } from "./content-guard.js";
 
 type VinstaNotificationLike = {
@@ -155,4 +156,80 @@ export function maybeSanitizeHumanNotificationForDelivery<T extends HumanNotific
   }
 
   return sanitizeHumanNotificationForDelivery(notification, customPatterns);
+}
+
+type OpenClawConfigLike = {
+  channels?: Record<string, unknown>;
+};
+
+export function discoverNotifyTargetsFromOpenClawConfig(
+  config: OpenClawConfigLike,
+): VinstaBridgeNotifyTarget[] {
+  const channels = config.channels;
+
+  if (!isRecord(channels)) {
+    return [];
+  }
+
+  const targets: VinstaBridgeNotifyTarget[] = [];
+
+  for (const [channelName, channelValue] of Object.entries(channels)) {
+    if (channelName === "defaults" || channelName === "modelByChannel" || !isRecord(channelValue)) {
+      continue;
+    }
+
+    // Check top-level defaultTo / allowFrom
+    const topTarget = extractOwnerTarget(channelValue);
+
+    if (topTarget) {
+      targets.push({ channel: channelName, to: topTarget });
+      continue;
+    }
+
+    // Check per-account configs
+    if (isRecord(channelValue.accounts)) {
+      for (const [accountId, accountValue] of Object.entries(channelValue.accounts)) {
+        if (!isRecord(accountValue)) {
+          continue;
+        }
+
+        const accountTarget = extractOwnerTarget(accountValue);
+
+        if (accountTarget) {
+          targets.push({ channel: channelName, to: accountTarget, accountId });
+          break;
+        }
+      }
+    }
+  }
+
+  return targets;
+}
+
+function extractOwnerTarget(record: Record<string, unknown>): string | null {
+  const defaultTo = asString(record.defaultTo);
+
+  if (defaultTo) {
+    return defaultTo;
+  }
+
+  const allowFrom = record.allowFrom;
+
+  if (Array.isArray(allowFrom)) {
+    const first = asString(allowFrom[0]);
+
+    if (first && first !== "*") {
+      return first;
+    }
+  }
+
+  if (typeof allowFrom === "string") {
+    const trimmed = allowFrom.trim();
+
+    if (trimmed && trimmed !== "*") {
+      return trimmed;
+    }
+  }
+
+  return null;
 }

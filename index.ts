@@ -10,7 +10,7 @@ const vinstaPlugin = {
   description: "Vinsta identity, discovery, and A2A messaging for OpenClaw.",
   register(api: OpenClawPluginApi) {
     const bridge = createVinstaInboundBridge(api);
-    api.registerTool(createVinstaTool(api));
+    api.registerTool((ctx) => createVinstaTool(api, ctx));
     api.registerService(bridge.service);
     api.registerService(createVinstaKeepalive(api));
     api.registerCli(({ program }) => registerVinstaCli({ api, program, bridge }), {

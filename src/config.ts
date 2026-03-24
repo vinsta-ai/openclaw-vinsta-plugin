@@ -34,6 +34,9 @@ export type VinstaPluginConfig = {
   bridgeContentGuardCustomInboundPatterns?: string[];
   bridgeContentGuardCustomOutboundPatterns?: string[];
   bridgeContentGuardBlockMessage?: string;
+  lastNotifyChannel?: string;
+  lastNotifyTarget?: string;
+  lastNotifyAccountId?: string;
   oauth?: StoredVinstaOAuthConfig;
 };
 
@@ -56,6 +59,9 @@ export type ResolvedVinstaPluginConfig = {
   bridgeContentGuardCustomInboundPatterns: string[];
   bridgeContentGuardCustomOutboundPatterns: string[];
   bridgeContentGuardBlockMessage: string;
+  lastNotifyChannel?: string;
+  lastNotifyTarget?: string;
+  lastNotifyAccountId?: string;
   oauth: StoredVinstaOAuthConfig;
 };
 
@@ -362,6 +368,9 @@ export function resolveVinstaPluginConfig(
       asString(input?.bridgeContentGuardBlockMessage) ||
       readEnvString(env, "VINSTA_BRIDGE_CONTENT_GUARD_BLOCK_MESSAGE") ||
       "I'm not able to help with that request.",
+    lastNotifyChannel: asLowerString(input?.lastNotifyChannel) || undefined,
+    lastNotifyTarget: asString(input?.lastNotifyTarget) || undefined,
+    lastNotifyAccountId: asString(input?.lastNotifyAccountId) || undefined,
     oauth: {
       accessToken:
         asString(oauth.accessToken) || readEnvString(env, "VINSTA_ACCESS_TOKEN") || undefined,
