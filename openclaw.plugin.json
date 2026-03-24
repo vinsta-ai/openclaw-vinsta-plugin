@@ -1,0 +1,228 @@
+{
+  "id": "vinsta",
+  "name": "Vinsta",
+  "description": "Vinsta identity, discovery, and A2A messaging for OpenClaw.",
+  "skills": ["./skills"],
+  "uiHints": {
+    "appUrl": {
+      "label": "Vinsta App URL",
+      "placeholder": "https://www.vinsta.ai",
+      "help": "Base URL for your Vinsta deployment."
+    },
+    "handle": {
+      "label": "Linked Vinsta Handle",
+      "placeholder": "joy",
+      "help": "The handle OpenClaw should use as its sender identity."
+    },
+    "clientId": {
+      "label": "Vinsta Client ID"
+    },
+    "clientSecret": {
+      "label": "Vinsta Client Secret",
+      "sensitive": true
+    },
+    "redirectUri": {
+      "label": "OAuth Redirect URI",
+      "placeholder": "http://127.0.0.1:8787/callback",
+      "advanced": true
+    },
+    "resource": {
+      "label": "OAuth Resource",
+      "advanced": true
+    },
+    "scopes": {
+      "label": "OAuth Scopes",
+      "advanced": true
+    },
+    "bridgeEnabled": {
+      "label": "Enable Vinsta Bridge",
+      "help": "Poll Vinsta for inbound messages and hand them to a local command.",
+      "advanced": true
+    },
+    "bridgeCommand": {
+      "label": "Bridge Command",
+      "placeholder": "~/.openclaw/extensions/vinsta/scripts/run-openclaw-bridge.sh",
+      "help": "Shell command run locally for each actionable inbound Vinsta agent event. The shipped helper runs OpenClaw on your behalf, keeps agent-to-agent coordination silent, and can emit either a reply back over Vinsta or a final owner summary.",
+      "advanced": true
+    },
+    "bridgeNotifyTargets": {
+      "label": "Bridge Notify Targets",
+      "help": "Optional OpenClaw-native human alert routes. Each target uses a linked channel/account object like {\"channel\":\"telegram\",\"to\":\"123456789\"} or {\"channel\":\"whatsapp\",\"to\":\"+15555550123\"}. When unset, alerts still surface in OpenClaw's main session/UI.",
+      "advanced": true
+    },
+    "bridgeNotifyCommand": {
+      "label": "Bridge Notify Command (Legacy)",
+      "placeholder": "notify-send \"Vinsta\" \"$VINSTA_NOTIFICATION_TITLE\"",
+      "help": "Optional legacy shell fallback run when a new Vinsta inbox event arrives. Prefer bridgeNotifyTargets so OpenClaw sends through linked native channels like Telegram or WhatsApp. If you mirror alerts into the same iMessage thread OpenClaw watches, use the shipped notify-imessage.sh helper so the text stays marked as a read-only notice.",
+      "advanced": true
+    },
+    "bridgePollIntervalMs": {
+      "label": "Bridge Poll Interval",
+      "advanced": true
+    },
+    "bridgeAutoReply": {
+      "label": "Bridge Auto Reply",
+      "help": "When enabled, the bridge sends the helper's reply back over Vinsta automatically. Final human summaries still use the configured human-notification path: native notify targets first, then the legacy notify command, then OpenClaw's main session/UI.",
+      "advanced": true
+    },
+    "bridgeArchiveOnSuccess": {
+      "label": "Archive Bridge Success",
+      "advanced": true
+    },
+    "bridgeContentGuardEnabled": {
+      "label": "Content Guard",
+      "help": "Screen inbound and outbound bridge messages for social engineering attacks and sensitive data leakage. Enabled by default.",
+      "advanced": true
+    },
+    "bridgeContentGuardCustomInboundPatterns": {
+      "label": "Custom Inbound Guard Patterns",
+      "help": "Additional regex patterns (strings) to block on inbound messages.",
+      "advanced": true
+    },
+    "bridgeContentGuardCustomOutboundPatterns": {
+      "label": "Custom Outbound Guard Patterns",
+      "help": "Additional regex patterns (strings) to block on outbound replies.",
+      "advanced": true
+    },
+    "bridgeContentGuardBlockMessage": {
+      "label": "Content Guard Block Message",
+      "help": "Reply sent when an inbound message is blocked by the content guard.",
+      "advanced": true
+    },
+    "oauth.accessToken": {
+      "label": "Stored Access Token",
+      "sensitive": true,
+      "advanced": true
+    },
+    "oauth.refreshToken": {
+      "label": "Stored Refresh Token",
+      "sensitive": true,
+      "advanced": true
+    },
+    "oauth.expiresAt": {
+      "label": "Access Token Expiry",
+      "advanced": true
+    },
+    "oauth.pendingState": {
+      "label": "Pending OAuth State",
+      "advanced": true
+    },
+    "oauth.pendingCodeVerifier": {
+      "label": "Pending PKCE Code Verifier",
+      "sensitive": true,
+      "advanced": true
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "appUrl": {
+        "type": "string"
+      },
+      "handle": {
+        "type": "string"
+      },
+      "clientId": {
+        "type": "string"
+      },
+      "clientSecret": {
+        "type": "string"
+      },
+      "redirectUri": {
+        "type": "string"
+      },
+      "resource": {
+        "type": "string"
+      },
+      "scopes": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "bridgeEnabled": {
+        "type": "boolean"
+      },
+      "bridgeCommand": {
+        "type": "string"
+      },
+      "bridgeNotifyTargets": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "channel": {
+              "type": "string"
+            },
+            "to": {
+              "type": "string"
+            },
+            "accountId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "channel",
+            "to"
+          ]
+        }
+      },
+      "bridgeNotifyCommand": {
+        "type": "string"
+      },
+      "bridgePollIntervalMs": {
+        "type": "number"
+      },
+      "bridgeAutoReply": {
+        "type": "boolean"
+      },
+      "bridgeArchiveOnSuccess": {
+        "type": "boolean"
+      },
+      "bridgeContentGuardEnabled": {
+        "type": "boolean"
+      },
+      "bridgeContentGuardCustomInboundPatterns": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "bridgeContentGuardCustomOutboundPatterns": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "bridgeContentGuardBlockMessage": {
+        "type": "string"
+      },
+      "oauth": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "accessToken": {
+            "type": "string"
+          },
+          "refreshToken": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "pendingState": {
+            "type": "string"
+          },
+          "pendingCodeVerifier": {
+            "type": "string"
+          },
+          "pendingCodeChallenge": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

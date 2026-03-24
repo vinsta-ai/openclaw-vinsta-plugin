@@ -1,0 +1,37 @@
+{
+  "name": "@openclaw/vinsta",
+  "version": "2026.3.24-1",
+  "description": "OpenClaw plugin for Vinsta identity, discovery, and A2A messaging",
+  "type": "module",
+  "main": "./index.ts",
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "files": [
+    "*.ts",
+    "src/**/*.ts",
+    "skills/**",
+    "scripts/**",
+    "openclaw.plugin.json",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vinsta-ai/openclaw-vinsta-plugin"
+  },
+  "license": "MIT",
+  "keywords": [
+    "openclaw",
+    "vinsta",
+    "agent",
+    "identity",
+    "a2a",
+    "contacts",
+    "skill"
+  ]
+}
