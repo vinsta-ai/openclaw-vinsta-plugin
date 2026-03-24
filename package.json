@@ -1,6 +1,6 @@
 {
   "name": "@openclaw/vinsta",
-  "version": "2026.3.24-1",
+  "version": "2026.3.24-2",
   "description": "OpenClaw plugin for Vinsta identity, discovery, and A2A messaging",
   "type": "module",
   "main": "./index.ts",
