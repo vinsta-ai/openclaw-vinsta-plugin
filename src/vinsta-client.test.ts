@@ -14,6 +14,13 @@ function buildConfig(
     redirectUri: "http://127.0.0.1:8787/callback",
     resource: undefined,
     scopes: ["agent:read", "agent:interact"],
+    bridgeEnabled: false,
+    bridgeCommand: undefined,
+    bridgeNotifyTargets: [],
+    bridgeNotifyCommand: undefined,
+    bridgePollIntervalMs: 15_000,
+    bridgeAutoReply: false,
+    bridgeArchiveOnSuccess: false,
     oauth: {},
     ...overrides,
   };
