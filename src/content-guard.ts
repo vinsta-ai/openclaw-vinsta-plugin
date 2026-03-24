@@ -17,7 +17,7 @@ const EXTRACTION_REQUEST_PREFIX = String.raw`(?:what(?:'s| is)|${EXTRACTION_VERB
 
 function buildInboundExtractionPattern(target: string) {
   return new RegExp(
-    String.raw`\b${EXTRACTION_REQUEST_PREFIX}\s+(?:me\s+)?(?:your|the)\s*(?:${target})\b`,
+    String.raw`\b${EXTRACTION_REQUEST_PREFIX}\s+(?:me\s+)?(?:your|the)\s+(?:\w+\s+)*?(?:${target})\b`,
     "i",
   );
 }
@@ -50,7 +50,7 @@ const DEFAULT_INBOUND_PATTERNS: RegExp[] = [
   // Direct extraction attempts
   buildInboundExtractionPattern(String.raw`secret|credentials?`),
   // Social engineering patterns
-  /\b(?:pretend\s*(?:you\s*are|to\s*be)|ignore\s*(?:previous|all)\s*instructions|bypass\s*(?:security|safety))\b/i,
+  /\b(?:pretend\s*(?:you\s*are|to\s*be)|ignore\s*(?:(?:all\s+)?previous|all)\s*instructions|bypass\s*(?:security|safety))\b/i,
 ];
 
 const DEFAULT_OUTBOUND_PATTERNS: RegExp[] = [

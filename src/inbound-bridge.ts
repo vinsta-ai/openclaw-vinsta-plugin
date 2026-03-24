@@ -3,10 +3,26 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import {
-  resolveMainSessionKey,
+  normalizeAgentId,
   type OpenClawPluginApi,
   type OpenClawPluginService,
 } from "openclaw/plugin-sdk";
+
+/** Resolves the main session key from the OpenClaw config.
+ *  Replaces the removed `resolveMainSessionKey` export from openclaw/plugin-sdk. */
+function resolveMainSessionKey(cfg: unknown): string {
+  const config = cfg as {
+    session?: { scope?: string; mainKey?: string };
+    agents?: { list?: Array<{ id?: string; default?: boolean }> };
+  };
+  if (config?.session?.scope === "global") return "global";
+  const agents = config?.agents?.list ?? [];
+  const agentId = normalizeAgentId(
+    agents.find((a) => a?.default)?.id ?? agents[0]?.id ?? "main",
+  );
+  const mainKey = (config?.session?.mainKey ?? "").trim().toLowerCase() || "main";
+  return `agent:${agentId}:${mainKey}`;
+}
 import {
   readVinstaPluginEntry,
   resolveVinstaPluginConfig,

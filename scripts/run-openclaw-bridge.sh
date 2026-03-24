@@ -23,7 +23,7 @@ if [[ -z "$handle" || -z "$body" ]]; then
   exit 0
 fi
 
-safe_sender="$(printf '%s' "${sender:-unknown}" | tr -cs '[:alnum:]._-@' '-')"
+safe_sender="$(printf '%s' "${sender:-unknown}" | tr -cs '[:alnum:]._@-' '-')"
 safe_sender="${safe_sender#-}"
 safe_sender="${safe_sender%-}"
 safe_sender="${safe_sender:-unknown}"
