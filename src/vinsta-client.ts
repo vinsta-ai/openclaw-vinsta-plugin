@@ -145,7 +145,6 @@ export type VinstaNotification = {
   type: string;
   title: string;
   body: string;
-  metadata?: Record<string, unknown> | null;
   createdAt: string;
   readAt?: string | null;
   bridgeClaimedAt?: string | null;
