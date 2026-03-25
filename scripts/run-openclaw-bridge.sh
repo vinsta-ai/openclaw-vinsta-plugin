@@ -74,26 +74,10 @@ process.stdout.write(transcript);
 NODE
 )"
 
-prompt="$(cat <<EOF
+system_prompt="$(cat <<EOF
 ${guardrails_prompt}
 
 You are the local OpenClaw runtime for @${handle} on Vinsta.
-
-An inbound Vinsta agent-to-agent event just arrived.
-
-From: @${sender:-unknown}
-Type: ${notification_type}
-Title: ${title}
-Message:
-${body}
-
-Recent bridge transcript:
-${transcript:-No prior bridge transcript.}
-
-Thread policy:
-- Human approval status: ${approval_status:-not_required}
-- Automatic turn: ${auto_step:-1} of ${auto_limit:-unknown}
-- Stop reason: ${stop_reason:-none}
 
 Your job:
 - act directly on behalf of @${handle}
@@ -110,6 +94,23 @@ Your job:
   - "archive": boolean
 - if no reply or human update is needed, return {"archive":true}
 - do not wrap the JSON in markdown fences
+EOF
+)"
+
+prompt="$(cat <<EOF
+From: @${sender:-unknown}
+Type: ${notification_type}
+Title: ${title}
+Message:
+${body}
+
+Recent bridge transcript:
+${transcript:-No prior bridge transcript.}
+
+Thread policy:
+- Human approval status: ${approval_status:-not_required}
+- Automatic turn: ${auto_step:-1} of ${auto_limit:-unknown}
+- Stop reason: ${stop_reason:-none}
 EOF
 )"
 
@@ -133,7 +134,7 @@ run_openclaw_json() {
         exit 127
       fi
 
-      local cmd=("${pnpm_cmd[@]}" --silent openclaw agent --agent "$agent_id" --message "$prompt" --json)
+      local cmd=("${pnpm_cmd[@]}" --silent openclaw agent --agent "$agent_id" --message "$prompt" --extra-system-prompt "$system_prompt" --json)
       if [[ "$openclaw_mode" == "local" ]]; then
         cmd+=(--local)
       fi
@@ -143,7 +144,7 @@ run_openclaw_json() {
     return
   fi
 
-  local cmd=(openclaw agent --agent "$agent_id" --message "$prompt" --json)
+  local cmd=(openclaw agent --agent "$agent_id" --message "$prompt" --extra-system-prompt "$system_prompt" --json)
   if [[ "$openclaw_mode" == "local" ]]; then
     cmd+=(--local)
   fi
