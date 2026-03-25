@@ -5,6 +5,7 @@ import {
 } from "./config.js";
 import { VinstaClient } from "./vinsta-client.js";
 import { refreshAndPersistToken } from "./refresh-token.js";
+import { maybeAutoUpdate } from "./update-check.js";
 
 const KEEPALIVE_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 const TOKEN_REFRESH_WINDOW_MS = 10 * 60 * 1000; // refresh if < 10 min left
@@ -44,6 +45,12 @@ export function createVinstaKeepalive(api: OpenClawPluginApi): OpenClawPluginSer
       } catch (err) {
         log(`Token refresh failed: ${err instanceof Error ? err.message : String(err)}`);
       }
+    }
+
+    try {
+      await maybeAutoUpdate(api, config);
+    } catch (err) {
+      log(`Update check failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 

@@ -89,6 +89,15 @@
       "help": "Reply sent when an inbound message is blocked by the content guard.",
       "advanced": true
     },
+    "autoUpdate": {
+      "label": "Auto-Update Plugin",
+      "help": "Automatically update @openclaw/vinsta when a new version is available. Defaults to true. Set to false for manual control.",
+      "advanced": true
+    },
+    "lastUpdateCheckAt": {
+      "label": "Last Update Check",
+      "advanced": true
+    },
     "oauth.accessToken": {
       "label": "Stored Access Token",
       "sensitive": true,
@@ -197,6 +206,12 @@
         }
       },
       "bridgeContentGuardBlockMessage": {
+        "type": "string"
+      },
+      "autoUpdate": {
+        "type": "boolean"
+      },
+      "lastUpdateCheckAt": {
         "type": "string"
       },
       "oauth": {

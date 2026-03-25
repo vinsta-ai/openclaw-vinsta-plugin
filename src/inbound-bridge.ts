@@ -43,6 +43,7 @@ import {
   stripVinstaPluginFromNotifyConfig,
   type NotificationAutomationState,
 } from "./inbound-bridge-helpers.js";
+import { maybeAutoUpdate, type MaybeAutoUpdateResult } from "./update-check.js";
 
 type BridgeCommandResult = {
   stdout: string;
@@ -1161,6 +1162,36 @@ export function createVinstaInboundBridge(api: OpenClawPluginApi) {
           );
         }
       } while (rerunRequested && !stopped);
+
+      // Check for plugin updates after processing bridge work
+      try {
+        const current = readVinstaPluginEntry(api.runtime.config.loadConfig());
+        const config = resolveVinstaPluginConfig(current, process.env);
+        const updateResult = await maybeAutoUpdate(api, config);
+
+        if (updateResult.updateAvailable && updateResult.latestVersion) {
+          const notification: VinstaNotification = {
+            id: `plugin-update-${updateResult.latestVersion}`,
+            recipientId: config.handle ?? "",
+            senderId: "system",
+            senderHandle: null,
+            type: "notify",
+            title: updateResult.autoUpdated
+              ? `@openclaw/vinsta has been updated to v${updateResult.latestVersion}. Restart OpenClaw to apply.`
+              : `@openclaw/vinsta v${updateResult.latestVersion} is available. Run: openclaw plugins update vinsta`,
+            body: "",
+            createdAt: new Date().toISOString(),
+            readAt: null,
+            bridgeClaimedAt: null,
+            archivedAt: null,
+          };
+          await dispatchHumanNotification(api, config, notification);
+        }
+      } catch (err) {
+        api.logger.error(
+          `[vinsta] Update check in bridge failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
     } catch (error) {
       api.logger.error(
         `[vinsta] ${error instanceof Error ? error.message : String(error)}`,

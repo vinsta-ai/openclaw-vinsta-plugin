@@ -12,6 +12,7 @@ import {
 } from "./config.js";
 import { parseAuthorizationCallbackUrl } from "./oauth-callback.js";
 import { persistableOauthState, VinstaClient } from "./vinsta-client.js";
+import { checkForUpdate, formatUpdateNotice, performAutoUpdate } from "./update-check.js";
 
 type BridgeController = {
   runOnce: () => Promise<unknown>;
@@ -88,8 +89,52 @@ export function registerVinstaCli(params: {
   root
     .command("status")
     .description("Show current Vinsta plugin status")
-    .action(() => {
-      printJson(buildVinstaStatus(mergedPluginConfig(api)));
+    .action(async () => {
+      const status = buildVinstaStatus(mergedPluginConfig(api));
+      const cached = await checkForUpdate();
+      printJson({
+        ...status,
+        ...(cached?.available
+          ? { updateAvailable: cached.latestVersion, currentVersion: cached.currentVersion }
+          : {}),
+      });
+    });
+
+  root
+    .command("check-update")
+    .description("Check for a newer version of the @openclaw/vinsta plugin")
+    .action(async () => {
+      const result = await checkForUpdate({ force: true });
+      if (!result) {
+        printJson({ error: "Unable to check for updates. GitHub API may be unreachable." });
+        return;
+      }
+      if (!result.available) {
+        printJson({ upToDate: true, currentVersion: result.currentVersion });
+        return;
+      }
+      process.stderr.write(`${formatUpdateNotice(result.latestVersion, result.currentVersion)}\n`);
+      printJson({
+        updateAvailable: true,
+        latestVersion: result.latestVersion,
+        currentVersion: result.currentVersion,
+      });
+
+      // Interactive prompt: ask whether to update now
+      const readline = await import("node:readline");
+      const rl = readline.createInterface({ input: process.stdin, output: process.stderr });
+      const answer = await new Promise<string>((resolve) => {
+        rl.question("Update now? [Y/n] ", (ans) => {
+          rl.close();
+          resolve(ans.trim().toLowerCase());
+        });
+      });
+
+      if (answer === "" || answer === "y" || answer === "yes") {
+        process.stderr.write("Updating...\n");
+        const updateResult = await performAutoUpdate(api);
+        printJson(updateResult);
+      }
     });
 
   root

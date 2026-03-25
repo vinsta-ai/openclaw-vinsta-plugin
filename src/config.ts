@@ -34,6 +34,8 @@ export type VinstaPluginConfig = {
   bridgeContentGuardCustomInboundPatterns?: string[];
   bridgeContentGuardCustomOutboundPatterns?: string[];
   bridgeContentGuardBlockMessage?: string;
+  autoUpdate?: boolean;
+  lastUpdateCheckAt?: string;
   lastNotifyChannel?: string;
   lastNotifyTarget?: string;
   lastNotifyAccountId?: string;
@@ -59,6 +61,8 @@ export type ResolvedVinstaPluginConfig = {
   bridgeContentGuardCustomInboundPatterns: string[];
   bridgeContentGuardCustomOutboundPatterns: string[];
   bridgeContentGuardBlockMessage: string;
+  autoUpdate: boolean;
+  lastUpdateCheckAt?: string;
   lastNotifyChannel?: string;
   lastNotifyTarget?: string;
   lastNotifyAccountId?: string;
@@ -368,6 +372,9 @@ export function resolveVinstaPluginConfig(
       asString(input?.bridgeContentGuardBlockMessage) ||
       readEnvString(env, "VINSTA_BRIDGE_CONTENT_GUARD_BLOCK_MESSAGE") ||
       "I'm not able to help with that request.",
+    autoUpdate:
+      asBoolean(input?.autoUpdate) ?? true,
+    lastUpdateCheckAt: asString(input?.lastUpdateCheckAt) || undefined,
     lastNotifyChannel: asLowerString(input?.lastNotifyChannel) || undefined,
     lastNotifyTarget: asString(input?.lastNotifyTarget) || undefined,
     lastNotifyAccountId: asString(input?.lastNotifyAccountId) || undefined,
@@ -413,6 +420,7 @@ export function buildVinstaStatus(config: ResolvedVinstaPluginConfig) {
     bridgeContentGuardEnabled: config.bridgeContentGuardEnabled,
     bridgeContentGuardCustomInboundPatternCount: config.bridgeContentGuardCustomInboundPatterns.length,
     bridgeContentGuardCustomOutboundPatternCount: config.bridgeContentGuardCustomOutboundPatterns.length,
+    autoUpdate: config.autoUpdate,
     hasClientSecret: Boolean(config.clientSecret),
     hasAccessToken: Boolean(config.oauth.accessToken),
     hasRefreshToken: Boolean(config.oauth.refreshToken),
