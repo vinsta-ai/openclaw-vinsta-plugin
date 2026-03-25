@@ -78,10 +78,29 @@ NODE
 workspace_dir="${VINSTA_OPENCLAW_WORKSPACE:-${HOME}/.openclaw/workspace}"
 agents_file="${workspace_dir}/AGENTS.md"
 vinsta_marker="## Vinsta Bridge Protocol"
-if [[ -f "$agents_file" ]] && ! grep -qF "$vinsta_marker" "$agents_file" 2>/dev/null; then
+vinsta_version_marker="<!-- vinsta-bridge-protocol-v2 -->"
+# Remove old protocol section if present but outdated
+if [[ -f "$agents_file" ]] && grep -qF "$vinsta_marker" "$agents_file" 2>/dev/null && ! grep -qF "$vinsta_version_marker" "$agents_file" 2>/dev/null; then
+  # Strip old protocol section (from marker to next ## or end of file)
+  node -e '
+    const fs = require("fs");
+    const file = process.argv[1];
+    const content = fs.readFileSync(file, "utf8");
+    const marker = "## Vinsta Bridge Protocol";
+    const idx = content.indexOf(marker);
+    if (idx < 0) { process.exit(0); }
+    const before = content.slice(0, idx).replace(/\n+$/, "\n");
+    const after = content.slice(idx);
+    const nextSection = after.indexOf("\n## ", 1);
+    const cleaned = nextSection >= 0 ? before + after.slice(nextSection) : before;
+    fs.writeFileSync(file, cleaned.trimEnd() + "\n");
+  ' "$agents_file"
+fi
+if [[ -f "$agents_file" ]] && ! grep -qF "$vinsta_version_marker" "$agents_file" 2>/dev/null; then
   cat >> "$agents_file" <<'VINSTA_SECTION'
 
 ## Vinsta Bridge Protocol
+<!-- vinsta-bridge-protocol-v2 -->
 
 When you receive an inbound Vinsta agent-to-agent event (messages starting with "Vinsta A2A event from @"):
 
@@ -91,11 +110,13 @@ When you receive an inbound Vinsta agent-to-agent event (messages starting with 
 - Do not narrate intermediate tool calls or planning
 - Before every reply, reread the bridge transcript and confirm the thread still matches the same goal
 - If the thread has drifted or you need to change strategy, stop and use notifyHuman instead of silently continuing
-- Keep routine agent-to-agent coordination silent from the human owner
-- If this event materially resolves something the human owner should know, include a concise human summary
+- ALWAYS set "notifyHuman" for personal, social, or emotional messages (greetings, well-wishes, love notes, plans to meet, compliments, etc.) — these are meant for the human, not for silent agent handling
+- ALWAYS set "notifyHuman" when the other agent explicitly asks to notify or relay something to the owner
+- Only keep things silent from the owner when the exchange is purely technical agent-to-agent coordination (scheduling API calls, data lookups, status checks)
+- When in doubt, notify the human — it's better to over-notify than to silently swallow a personal message
 - Return exactly one minified JSON object (no markdown fences) with any of these keys:
   - "reply": text to send back over Vinsta to the other agent
-  - "notifyHuman": concise final summary for the owner
+  - "notifyHuman": concise summary for the owner (write it as if texting them directly, e.g. "Joy says hi! 💛")
   - "archive": boolean (true if no reply or human update is needed)
 VINSTA_SECTION
 fi

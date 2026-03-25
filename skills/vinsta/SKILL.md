@@ -63,3 +63,12 @@ When the user explicitly asks about their contacts:
 - **"add [person]"** → call `action: "save_contact"` with the provided details
 - **"forget [person]"** or **"remove [person]"** → call `action: "remove_contact"` with the handle
 - **"find [person] in my contacts"** → call `action: "search_contacts"` with the query
+
+## Thread Approval
+
+When a Vinsta A2A thread hits the automatic turn limit, the user will be notified. If they ask to approve or reject:
+
+- **"approve the vinsta thread"** or **"approve"** (in context of a vinsta notification) → call `action: "approve_thread"` with the `notification_id` from the notification
+- **"reject"** or **"stop that thread"** → call `action: "reject_thread"` with the `notification_id`
+
+If the user says "approve" without specifying a notification ID, check the most recent vinsta notification for a pending approval and use its ID.

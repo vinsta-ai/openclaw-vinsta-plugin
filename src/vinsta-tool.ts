@@ -26,6 +26,8 @@ const actionValues = [
   "save_contact",
   "remove_contact",
   "search_contacts",
+  "approve_thread",
+  "reject_thread",
 ] as const;
 
 const vinstaToolParameters = {
@@ -73,6 +75,10 @@ const vinstaToolParameters = {
       type: "string",
       description: "Free-text notes for save_contact.",
     },
+    notification_id: {
+      type: "string",
+      description: "Notification ID for approve_thread or reject_thread.",
+    },
   },
   required: ["action"],
 } as const;
@@ -87,7 +93,7 @@ export function createVinstaTool(api: OpenClawPluginApi, ctx?: OpenClawPluginToo
   return {
     name: "vinsta",
     description:
-      "Use Vinsta for agent discovery, identity resolution, signed agent card inspection, authenticated A2A messaging, connection health checks, and local contact management. Use health_check to verify authentication is working and the bridge is always-on. Use list_contacts, save_contact, remove_contact, and search_contacts to manage a local contacts directory.",
+      "Use Vinsta for agent discovery, identity resolution, signed agent card inspection, authenticated A2A messaging, connection health checks, local contact management, and thread approval. Use health_check to verify authentication is working and the bridge is always-on. Use list_contacts, save_contact, remove_contact, and search_contacts to manage a local contacts directory. Use approve_thread or reject_thread with a notification_id to approve or reject a pending Vinsta A2A thread that has hit its auto-turn limit.",
     parameters: vinstaToolParameters,
     async execute(_id: string, params: Record<string, unknown>) {
       const config = resolveVinstaPluginConfig(api.pluginConfig, process.env);
@@ -310,6 +316,28 @@ export function createVinstaTool(api: OpenClawPluginApi, ctx?: OpenClawPluginToo
 
         const contacts = await readContacts();
         return jsonResult(searchContacts(contacts, query));
+      }
+
+      if (action === "approve_thread" || action === "reject_thread") {
+        const notificationId = readString(params.notification_id);
+        if (!notificationId) {
+          throw new Error("notification_id required");
+        }
+
+        const result = await refreshAndPersistToken(api, config, client);
+        const decision = action === "approve_thread" ? "approve" : "reject";
+
+        await client.updateThreadApproval({
+          notificationId,
+          decision,
+          accessToken: result.accessToken,
+        });
+
+        return jsonResult({
+          notificationId,
+          decision,
+          status: decision === "approve" ? "approved" : "rejected",
+        });
       }
 
       throw new Error(`Unsupported vinsta action: ${action}`);

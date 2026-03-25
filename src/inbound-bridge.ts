@@ -434,24 +434,26 @@ function formatHumanNotificationText(
   notification: VinstaNotification,
 ) {
   const automation = readNotificationAutomationState(notification);
-  const lines = [`[Vinsta notice - no reply needed] ${notification.title.trim()}`];
+  const sender = parseSenderHandle(notification);
+  const senderLabel = sender ? `@${sender}` : "Someone";
 
   if (automation?.approvalStatus === "pending") {
     const reason =
       automation.stopReason === "auto_turn_limit"
-        ? `Automatic thread reached the ${automation.autoLimit}-turn review limit.`
-        : "This thread is configured for human approval before the next automatic turn.";
-    lines.push("", reason);
+        ? `Thread with ${senderLabel} reached the ${automation.autoLimit}-turn auto-limit.`
+        : `Thread with ${senderLabel} needs your approval before continuing.`;
+    return `[vinsta] ${reason} Tell your agent to approve or reject this thread (notification_id: ${notification.id}).`;
   }
 
   const body = notification.body.trim();
+  const maxLen = 500;
+  const truncated = body.length > maxLen ? `${body.slice(0, maxLen)}…` : body;
 
   if (body) {
-    lines.push("", body);
+    return `[vinsta] ${senderLabel}: ${truncated}`;
   }
 
-  lines.push("", `Open in Vinsta: ${buildVinstaThreadsUrl(config)}`);
-  return lines.join("\n");
+  return `[vinsta] ${notification.title.trim()}`;
 }
 
 async function dispatchHumanNotificationViaOpenClaw(
@@ -500,10 +502,9 @@ function dispatchHumanNotificationToOpenClawUi(
 ) {
   const cfg = api.runtime.config.loadConfig();
   const sessionKey = resolveMainSessionKey(cfg);
-  const body = notification.body.trim();
-  const preview = body ? `${notification.title}: ${body}` : notification.title;
+  const text = formatHumanNotificationText(config, notification);
 
-  api.runtime.system.enqueueSystemEvent(`Vinsta: ${preview}`, {
+  api.runtime.system.enqueueSystemEvent(text, {
     sessionKey,
     contextKey: `vinsta:${notification.id}`,
   });

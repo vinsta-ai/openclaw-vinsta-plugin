@@ -29,6 +29,7 @@ describe("readNotificationAutomationState", () => {
     });
 
     assert.deepEqual(automation, {
+      conversationId: null,
       autoStep: 3,
       autoLimit: 6,
       humanInLoopEnabled: true,
@@ -85,20 +86,24 @@ describe("shouldSuppressFreshHumanNotificationForBridgeCommand", () => {
     );
   });
 
-  it("keeps the initial owner alert for direct openclaw agent commands", () => {
+  it("suppresses the initial owner alert for any configured bridge command", () => {
     assert.equal(
       shouldSuppressFreshHumanNotificationForBridgeCommand(
         'pnpm --silent openclaw agent --agent main --message "$PROMPT" --json',
       ),
-      false,
+      true,
+    );
+    assert.equal(
+      shouldSuppressFreshHumanNotificationForBridgeCommand("/usr/local/bin/custom-bridge-handler"),
+      true,
     );
   });
 
-  it("keeps the initial owner alert for custom non-OpenClaw bridge commands", () => {
-    assert.equal(
-      shouldSuppressFreshHumanNotificationForBridgeCommand("/usr/local/bin/custom-bridge-handler"),
-      false,
-    );
+  it("does not suppress when no bridge command is set", () => {
+    assert.equal(shouldSuppressFreshHumanNotificationForBridgeCommand(null), false);
+    assert.equal(shouldSuppressFreshHumanNotificationForBridgeCommand(undefined), false);
+    assert.equal(shouldSuppressFreshHumanNotificationForBridgeCommand(""), false);
+    assert.equal(shouldSuppressFreshHumanNotificationForBridgeCommand("  "), false);
   });
 });
 

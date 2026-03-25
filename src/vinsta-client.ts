@@ -813,6 +813,27 @@ export class VinstaClient {
     };
   }
 
+  async updateThreadApproval(params: {
+    notificationId: string;
+    decision: "approve" | "reject";
+    accessToken: string;
+  }) {
+    return fetchJson<NotificationMutationResponse>(
+      this.fetchImpl,
+      this.buildUrl(`/api/notifications/${params.notificationId}`),
+      {
+        method: "PATCH",
+        headers: withBearerHeaders(params.accessToken, {
+          "content-type": "application/json",
+        }),
+        body: JSON.stringify({
+          action: "update_approval",
+          decision: params.decision,
+        }),
+      },
+    );
+  }
+
   async completeBridgeNotification(params: {
     notificationId: string;
     claimedAt: string;

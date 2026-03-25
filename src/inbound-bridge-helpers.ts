@@ -20,6 +20,7 @@ type OpenClawNotifyConfigLike = {
 };
 
 export type NotificationAutomationState = {
+  conversationId: string | null;
   autoStep: number;
   autoLimit: number;
   humanInLoopEnabled: boolean;
@@ -65,6 +66,7 @@ export function readNotificationAutomationState(
   }
 
   return {
+    conversationId: asString(a2aThread.conversationId) || null,
     autoStep: asPositiveInt(a2aThread.autoStep, 1),
     autoLimit: asPositiveInt(a2aThread.autoLimit, 6),
     humanInLoopEnabled: Boolean(a2aThread.humanInLoopEnabled),
@@ -109,13 +111,8 @@ export function stripVinstaPluginFromNotifyConfig<T extends OpenClawNotifyConfig
 export function shouldSuppressFreshHumanNotificationForBridgeCommand(
   command: string | null | undefined,
 ) {
-  const normalized = typeof command === "string" ? command.trim().toLowerCase() : "";
-
-  if (!normalized) {
-    return false;
-  }
-
-  return normalized.includes("run-openclaw-bridge.sh");
+  const normalized = typeof command === "string" ? command.trim() : "";
+  return Boolean(normalized);
 }
 
 export function sanitizeHumanNotificationForDelivery<T extends HumanNotificationLike>(
