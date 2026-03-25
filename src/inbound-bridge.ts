@@ -807,6 +807,39 @@ async function processBridgeOnce(
         continue;
       }
 
+      // ── Post-approval: notify human and archive, do NOT re-run bridge command ──
+      const claimAutomation = readNotificationAutomationState(claim.notification);
+      if (claimAutomation?.approvalStatus === "approved") {
+        commandCompleted = true;
+        api.logger.info(
+          `[vinsta] Notification ${notification.id} was approved — notifying human and archiving.`,
+        );
+
+        try {
+          await client.completeBridgeNotification({
+            notificationId: notification.id,
+            claimedAt,
+            accessToken: auth.tokens.accessToken,
+            archive: true,
+          });
+          await dispatchHumanNotification(api, config, notification);
+        } catch (error) {
+          pendingCompletions.set(notification.id, {
+            notificationId: notification.id,
+            claimedAt,
+            archive: true,
+            humanNotification: notification,
+          });
+          api.logger.error(
+            `[vinsta] Failed to complete approved notification ${notification.id}: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        }
+        processed += 1;
+        continue;
+      }
+
       // ── Inbound content screening ──
       if (config.bridgeContentGuardEnabled) {
         const inboundScreen = screenInbound(
