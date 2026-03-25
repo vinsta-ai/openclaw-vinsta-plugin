@@ -112,6 +112,11 @@ function isBridgeActionableNotification(
     return true;
   }
 
+  // Review notifications with grant variant (capability-denied prompts) are bridge-actionable
+  if (notification.type === "review" && notification.actionRequest?.variant === "grant") {
+    return true;
+  }
+
   if (notification.type !== "notify") {
     return false;
   }
@@ -849,6 +854,118 @@ async function processBridgeOnce(
           processed += 1;
           continue;
         }
+      }
+
+      // ── Special handling for capability-denied review notifications ──
+      const isGrantReview =
+        notification.type === "review" &&
+        (notification as any).actionRequest?.variant === "grant";
+
+      if (isGrantReview) {
+        const senderHandle = parseSenderHandle(notification) ?? "unknown";
+        const capability = (notification.metadata as any)?.capability ?? "";
+        const capLabel = (notification.metadata as any)?.capabilityLabel ?? capability;
+
+        // Build a prompt that presents clear choices to the user's agent
+        const grantPrompt: VinstaNotification = {
+          ...notification,
+          body:
+            `${notification.body}\n\n` +
+            `How would you like to handle this? Reply with ONLY one of these options:\n` +
+            `1. "permit always" — upgrade their trust tier so this capability is always allowed\n` +
+            `2. "permit once" — allow this one time without changing their trust tier\n` +
+            `3. "deny" — decline and keep current permissions\n\n` +
+            `Reply with just the option text (e.g. "permit always").`,
+        };
+
+        const result = await runBridgeCommand(
+          config.bridgeCommand,
+          grantPrompt,
+          config.handle,
+        );
+
+        if (result.exitCode !== 0) {
+          await surfaceBridgeFailure(notification, claimedAt);
+          api.logger.error(
+            `[vinsta] Grant review command failed for ${notification.id} with exit ${result.exitCode}`,
+          );
+          continue;
+        }
+
+        commandCompleted = true;
+
+        // Parse the agent's choice from the bridge response
+        const rawAction = parseBridgeAction(result);
+        const responseText = (rawAction.reply ?? result.stdout ?? "").toLowerCase().trim();
+
+        let grantAction: "permit_always" | "permit_once" | "deny" = "deny";
+        if (responseText.includes("permit always") || responseText.includes("always")) {
+          grantAction = "permit_always";
+        } else if (
+          responseText.includes("permit once") ||
+          responseText.includes("one time") ||
+          responseText.includes("this time") ||
+          responseText.includes("once")
+        ) {
+          grantAction = "permit_once";
+        }
+
+        // Call the grant API
+        try {
+          const grantUrl = `${config.appUrl.replace(/\/$/, "")}/api/permissions/grant`;
+          const grantResponse = await fetch(grantUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${auth.tokens.accessToken}`,
+            },
+            body: JSON.stringify({
+              action: grantAction,
+              senderHandle,
+              capability: capability || undefined,
+              notificationId: notification.id,
+            }),
+          });
+
+          const grantResult = (await grantResponse.json()) as { message?: string; granted?: boolean };
+          const humanSummary = grantResult.message ?? `Permission ${grantAction.replace(/_/g, " ")} for @${senderHandle}.`;
+
+          const pendingCompletion: PendingBridgeCompletion = {
+            notificationId: notification.id,
+            claimedAt,
+            reply: undefined,
+            archive: true,
+            humanNotification: buildHumanSummaryNotification({
+              original: notification,
+              handle: config.handle,
+              summary: humanSummary,
+            }),
+          };
+
+          await client.completeBridgeNotification({
+            notificationId: notification.id,
+            claimedAt,
+            accessToken: auth.tokens.accessToken,
+            reply: undefined,
+            archive: true,
+          });
+          if (pendingCompletion.humanNotification) {
+            await dispatchHumanNotification(api, config, pendingCompletion.humanNotification);
+          }
+
+          api.logger.info(
+            `[vinsta] Grant review for ${notification.id}: action=${grantAction}, granted=${grantResult.granted}`,
+          );
+        } catch (error) {
+          api.logger.error(
+            `[vinsta] Failed to process grant review ${notification.id}: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        }
+
+        processed += 1;
+        continue;
       }
 
       const result = await runBridgeCommand(
