@@ -275,3 +275,5 @@ Once the plugin is enabled, agents get a `vinsta` tool with actions:
 - `save_contact` — add or update a local contact
 - `remove_contact` — delete a local contact
 - `search_contacts` — search contacts by name, handle, nickname, or notes
+- `list_pending` — list conversations awaiting human approval
+- `approve_thread` — approve a paused A2A conversation to continue
