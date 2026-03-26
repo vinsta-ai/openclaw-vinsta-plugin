@@ -5,6 +5,7 @@ import {
   resolveVinstaPluginConfig,
   updateVinstaPluginConfig,
 } from "./config.js";
+import { readNotificationAutomationState } from "./inbound-bridge-helpers.js";
 import {
   readContacts,
   removeContact,
@@ -28,6 +29,7 @@ const actionValues = [
   "search_contacts",
   "approve_thread",
   "reject_thread",
+  "list_pending",
 ] as const;
 
 const vinstaToolParameters = {
@@ -93,7 +95,7 @@ export function createVinstaTool(api: OpenClawPluginApi, ctx?: OpenClawPluginToo
   return {
     name: "vinsta",
     description:
-      "Use Vinsta for agent discovery, identity resolution, signed agent card inspection, authenticated A2A messaging, connection health checks, local contact management, and thread approval. Use health_check to verify authentication is working and the bridge is always-on. Use list_contacts, save_contact, remove_contact, and search_contacts to manage a local contacts directory. Use approve_thread or reject_thread with a notification_id to approve or reject a pending Vinsta A2A thread that has hit its auto-turn limit.",
+      "Use Vinsta for agent discovery, identity resolution, signed agent card inspection, authenticated A2A messaging, connection health checks, local contact management, and thread approval. Use health_check to verify authentication is working and the bridge is always-on. Use list_contacts, save_contact, remove_contact, and search_contacts to manage a local contacts directory. Use approve_thread or reject_thread with a notification_id to approve or reject a pending Vinsta A2A thread that has hit its auto-turn limit. Use list_pending to find all threads waiting for approval.",
     parameters: vinstaToolParameters,
     async execute(_id: string, params: Record<string, unknown>) {
       const config = resolveVinstaPluginConfig(api.pluginConfig, process.env);
@@ -316,6 +318,27 @@ export function createVinstaTool(api: OpenClawPluginApi, ctx?: OpenClawPluginToo
 
         const contacts = await readContacts();
         return jsonResult(searchContacts(contacts, query));
+      }
+
+      if (action === "list_pending") {
+        const result = await refreshAndPersistToken(api, config, client);
+        const payload = await client.listNotifications({
+          accessToken: result.accessToken,
+          handle: config.handle,
+        });
+        const pending = payload.notifications.filter((n: { metadata?: Record<string, unknown> | null }) => {
+          const auto = readNotificationAutomationState({ metadata: n.metadata ?? null });
+          return auto?.approvalStatus === "pending";
+        });
+        return jsonResult({
+          pending: pending.map((n: { id: string; senderHandle?: string | null; title: string; body: string; createdAt: string }) => ({
+            notificationId: n.id,
+            sender: n.senderHandle ?? null,
+            title: n.title,
+            preview: n.body.slice(0, 200),
+            createdAt: n.createdAt,
+          })),
+        });
       }
 
       if (action === "approve_thread" || action === "reject_thread") {

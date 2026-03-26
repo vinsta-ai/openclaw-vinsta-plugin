@@ -71,4 +71,4 @@ When a Vinsta A2A thread hits the automatic turn limit, the user will be notifie
 - **"approve the vinsta thread"** or **"approve"** (in context of a vinsta notification) → call `action: "approve_thread"` with the `notification_id` from the notification
 - **"reject"** or **"stop that thread"** → call `action: "reject_thread"` with the `notification_id`
 
-If the user says "approve" without specifying a notification ID, check the most recent vinsta notification for a pending approval and use its ID.
+If the user says "approve" without specifying a notification ID, call `action: "list_pending"` first to find all threads waiting for approval, then approve the appropriate one. If there's only one pending thread, approve it directly. If there are multiple, ask the user which one.

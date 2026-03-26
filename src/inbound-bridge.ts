@@ -440,9 +440,12 @@ function formatHumanNotificationText(
   if (automation?.approvalStatus === "pending") {
     const reason =
       automation.stopReason === "auto_turn_limit"
-        ? `Thread with ${senderLabel} reached the ${automation.autoLimit}-turn auto-limit.`
-        : `Thread with ${senderLabel} needs your approval before continuing.`;
-    return `[vinsta] ${reason} Tell your agent to approve or reject this thread (notification_id: ${notification.id}).`;
+        ? `The conversation with ${senderLabel} reached ${automation.autoLimit} automatic turns.`
+        : `The conversation with ${senderLabel} needs your approval to continue.`;
+    const body = notification.body.trim();
+    const preview = body.length > 200 ? `${body.slice(0, 200)}...` : body;
+    const previewLine = preview ? `\n\nLatest message: "${preview}"` : "";
+    return `${reason}${previewLine}\n\nSay "approve" or "reject" to continue.`;
   }
 
   const body = notification.body.trim();
@@ -807,37 +810,27 @@ async function processBridgeOnce(
         continue;
       }
 
-      // ── Post-approval: notify human and archive, do NOT re-run bridge command ──
+      // ── Post-claim race guard: release if approval is now pending ──
       const claimAutomation = readNotificationAutomationState(claim.notification);
-      if (claimAutomation?.approvalStatus === "approved") {
-        commandCompleted = true;
+      if (claimAutomation?.approvalStatus === "pending" || claimAutomation?.stopReason === "human_rejected") {
         api.logger.info(
-          `[vinsta] Notification ${notification.id} was approved — notifying human and archiving.`,
+          `[vinsta] Notification ${notification.id} requires approval — releasing claim.`,
         );
-
-        try {
-          await client.completeBridgeNotification({
-            notificationId: notification.id,
-            claimedAt,
-            accessToken: auth.tokens.accessToken,
-            archive: true,
-          });
-          await dispatchHumanNotification(api, config, notification);
-        } catch (error) {
-          pendingCompletions.set(notification.id, {
-            notificationId: notification.id,
-            claimedAt,
-            archive: true,
-            humanNotification: notification,
-          });
-          api.logger.error(
-            `[vinsta] Failed to complete approved notification ${notification.id}: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          );
-        }
-        processed += 1;
+        await client.releaseNotification({
+          notificationId: notification.id,
+          claimedAt,
+          accessToken: auth.tokens.accessToken,
+        });
+        await dispatchHumanNotification(api, config, claim.notification);
         continue;
+      }
+
+      // ── Post-approval: re-run the bridge command so the agent actually replies ──
+      if (claimAutomation?.approvalStatus === "approved") {
+        api.logger.info(
+          `[vinsta] Notification ${notification.id} was approved — running bridge command.`,
+        );
+        // Fall through to normal bridge command execution below
       }
 
       // ── Inbound content screening ──
