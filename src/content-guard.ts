@@ -62,8 +62,8 @@ const DEFAULT_OUTBOUND_PATTERNS: RegExp[] = [
   /-----BEGIN\s+(?:RSA\s+)?PRIVATE\s+KEY-----/,
   // JWT tokens (three base64 segments separated by dots)
   /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/,
-  // Long hex strings that look like secrets (48+ chars, excluding common git SHAs)
-  /\b[0-9a-f]{48,}\b/i,
+  // Long hex strings that look like secrets (64+ chars, excludes git SHAs and UUID-derived strings)
+  /\b[0-9a-f]{64,}\b/i,
   // Long base64 strings that look like secrets (48+ chars, no spaces)
   /\b[A-Za-z0-9+/]{48,}={0,2}\b/,
   // AWS-style keys

@@ -257,7 +257,6 @@ async function runBridgeCommand(command: string, notification: VinstaNotificatio
         VINSTA_AGENT_APPROVAL_STATUS: automation?.approvalStatus ?? "",
         VINSTA_AGENT_STOP_REASON: automation?.stopReason ?? "",
         VINSTA_HUMAN_IN_THE_LOOP: automation?.humanInLoopEnabled ? "1" : "0",
-        VINSTA_NOTIFICATION_JSON: payload,
       },
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -318,7 +317,6 @@ async function runBridgeNotifyCommand(
         VINSTA_AGENT_APPROVAL_STATUS: automation?.approvalStatus ?? "",
         VINSTA_AGENT_STOP_REASON: automation?.stopReason ?? "",
         VINSTA_HUMAN_IN_THE_LOOP: automation?.humanInLoopEnabled ? "1" : "0",
-        VINSTA_NOTIFICATION_JSON: payload,
       },
       stdio: ["pipe", "pipe", "pipe"],
     });

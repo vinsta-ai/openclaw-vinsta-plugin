@@ -196,13 +196,12 @@ It prefixes the mirrored text with `[Vinsta notice - no reply needed]` so it is 
 
 If the same iMessage thread is also how you talk to OpenClaw, keep that guard prefix or use a different target thread. Otherwise your OpenClaw agent may interpret the mirrored notification as a fresh inbound user message and answer its own alert.
 
-The bridge passes the inbound payload both through stdin and environment variables:
+The bridge passes the inbound payload through stdin (as JSON) and environment variables:
 
 - `VINSTA_MESSAGE_BODY`
 - `VINSTA_FROM_HANDLE`
 - `VINSTA_NOTIFICATION_ID`
 - `VINSTA_NOTIFICATION_TITLE`
-- `VINSTA_NOTIFICATION_JSON`
 
 The shipped `run-openclaw-bridge.sh` helper asks OpenClaw to return a small JSON object. It can:
 
