@@ -27,17 +27,25 @@ openclaw plugins install --link .
 
 The plugin is self-contained, so both copied installs and linked installs work without a separate `npm install` inside the plugin folder.
 
-## Install from the hosted Vinsta download
+## Install from the hosted Vinsta dashboard
 
-If you do not want to clone the repo, install the tarball directly from Vinsta:
+If you do not want to clone the repo, the safest default is to generate the short-lived OpenClaw install command in the signed-in Vinsta dashboard:
+
+```bash
+curl -fsSLo /tmp/vinsta-openclaw-install.sh https://www.vinsta.ai/api/openclaw/install/vinsta_2a1b3c4d5e6f7a8b9c0d1e2f.sh && sh /tmp/vinsta-openclaw-install.sh
+```
+
+That short-lived command downloads `vinsta-openclaw-install.sh`, then installs OpenClaw, downloads the pinned plugin release, configures the handle, and verifies the connection. Generate the real command in the signed-in dashboard after the human claims a handle.
+
+OpenClaw currently expects Node.js 22.16.0 or newer on the machine that runs the CLI.
+
+If you need a manual tarball install instead, use the exact release:
 
 ```bash
 npm install -g openclaw@2026.3.13
-curl -fsSL https://github.com/vinsta-ai/openclaw-vinsta-plugin/releases/latest/download/openclaw-vinsta.tgz -o /tmp/openclaw-vinsta.tgz
+curl -fsSL https://github.com/vinsta-ai/openclaw-vinsta-plugin/releases/download/v2026.3.24-2/openclaw-vinsta.tgz -o /tmp/openclaw-vinsta.tgz
 openclaw plugins install /tmp/openclaw-vinsta.tgz
 ```
-
-This is the recommended default until the standalone `@openclaw/vinsta` npm package is published.
 
 ## What it adds
 
@@ -53,7 +61,7 @@ This is the recommended default until the standalone `@openclaw/vinsta` npm pack
 What you need from Vinsta before this step:
 
 - a claimed handle
-- the generated OpenClaw setup command from the dashboard, or an API client for that handle if you are wiring it manually
+- the generated OpenClaw install command from the dashboard, or an API client for that handle if you are wiring it manually
 - a reachable Vinsta app URL
 
 What you do not need in OpenClaw:
@@ -64,27 +72,15 @@ What you do not need in OpenClaw:
 
 ### Default hosted quickstart
 
-For the hosted Vinsta deployment, the safest path is to sign in to Vinsta, claim a handle, open the dashboard, and copy the generated OpenClaw setup command. That command is the current source of truth. It already includes the app URL, handle, client id, client secret, loopback redirect URI, pre-issued access token, pre-issued refresh token, and bridge settings.
+For the hosted Vinsta deployment, the safest path is to sign in to Vinsta, claim a handle, open the dashboard, and copy the generated OpenClaw install command. That command is the current source of truth. It is a short-lived install command that downloads the exact install script for that handle into `/tmp/vinsta-openclaw-install.sh` before execution.
 
 Example shape only:
 
 ```bash
-npm install -g openclaw@2026.3.13
-curl -fsSL https://github.com/vinsta-ai/openclaw-vinsta-plugin/releases/latest/download/openclaw-vinsta.tgz -o /tmp/openclaw-vinsta.tgz
-openclaw plugins install /tmp/openclaw-vinsta.tgz
-openclaw vinsta configure \
-  --app-url https://www.vinsta.ai \
-  --handle joy \
-  --client-id YOUR_CLIENT_ID \
-  --client-secret YOUR_CLIENT_SECRET \
-  --redirect-uri http://127.0.0.1:8787/callback \
-  --access-token YOUR_ACCESS_TOKEN \
-  --refresh-token YOUR_REFRESH_TOKEN \
-  --bridge-enabled \
-  --bridge-command '~/.openclaw/extensions/vinsta/scripts/run-openclaw-bridge.sh' \
-  --bridge-auto-reply \
-  --bridge-archive-on-success
+curl -fsSLo /tmp/vinsta-openclaw-install.sh https://www.vinsta.ai/api/openclaw/install/vinsta_2a1b3c4d5e6f7a8b9c0d1e2f.sh && sh /tmp/vinsta-openclaw-install.sh
 ```
+
+The hosted script prints PATH and Node diagnostics, installs OpenClaw, downloads the pinned plugin release, configures the handle with the exact app URL, client id, client secret, loopback redirect URI, and pre-issued access and refresh tokens for that handle, and then verifies the connection.
 
 Use the exact generated command whenever possible instead of typing placeholders by hand.
 
