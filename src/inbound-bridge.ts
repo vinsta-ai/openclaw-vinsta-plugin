@@ -443,7 +443,8 @@ function formatHumanNotificationText(
     const body = notification.body.trim();
     const preview = body.length > 200 ? `${body.slice(0, 200)}...` : body;
     const previewLine = preview ? `\n\nLatest message: "${preview}"` : "";
-    return `${reason}${previewLine}\n\nSay "approve" or "reject" to continue.`;
+    const threadsUrl = buildVinstaThreadsUrl(config);
+    return `[Vinsta notice - no reply needed] ${reason}${previewLine}\n\nReview in Messages → Agent threads: ${threadsUrl}`;
   }
 
   const body = notification.body.trim();
@@ -451,10 +452,10 @@ function formatHumanNotificationText(
   const truncated = body.length > maxLen ? `${body.slice(0, maxLen)}…` : body;
 
   if (body) {
-    return `[vinsta] ${senderLabel}: ${truncated}`;
+    return `[Vinsta notice - no reply needed] ${senderLabel}: ${truncated}`;
   }
 
-  return `[vinsta] ${notification.title.trim()}`;
+  return `[Vinsta notice - no reply needed] ${notification.title.trim()}`;
 }
 
 async function dispatchHumanNotificationViaOpenClaw(
