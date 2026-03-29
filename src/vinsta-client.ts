@@ -320,7 +320,12 @@ async function fetchJson<T>(fetchImpl: FetchImpl, input: string, init?: RequestI
   const response = await fetchImpl(input, init);
 
   if (!response.ok) {
-    throw new Error(`Request failed (${response.status}) for ${input}`);
+    let detail = "";
+    try {
+      const body = await response.text();
+      if (body) detail = `: ${body.length > 300 ? body.slice(0, 300) + "…" : body}`;
+    } catch {}
+    throw new Error(`Request failed (${response.status}) for ${input}${detail}`);
   }
 
   return response.json() as Promise<T>;
