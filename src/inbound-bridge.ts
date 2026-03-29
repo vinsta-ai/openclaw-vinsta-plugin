@@ -591,6 +591,7 @@ async function processBridgeOnce(
   dispatchedNotificationIds: Set<string>,
   senderReplyTimestamps: Map<string, number[]>,
   senderNotifyTimestamps: Map<string, number[]>,
+  primedNotificationIds: Set<string> | null,
   observeNotifications?: (
     notifications: VinstaNotification[],
     config: ReturnType<typeof resolveVinstaPluginConfig>,
@@ -669,6 +670,11 @@ async function processBridgeOnce(
 
   const candidates = payload.notifications
     .filter((notification) => {
+      // Skip notifications that existed before the bridge started (priming guard)
+      if (primedNotificationIds?.has(notification.id)) {
+        return false;
+      }
+
       if (shouldDeferBridgeRetry(failedBridgeNotificationIds, notification.id)) {
         return false;
       }
@@ -1090,6 +1096,7 @@ export function createVinstaInboundBridge(api: OpenClawPluginApi) {
   const failedBridgeNotificationIds = new Map<string, number>();
   const senderReplyTimestamps = new Map<string, number[]>();
   const senderNotifyTimestamps = new Map<string, number[]>();
+  const primedNotificationIds = new Set<string>();
   let lastDispatchedUpdateVersion: string | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let streamAbortController: AbortController | null = null;
@@ -1116,6 +1123,7 @@ export function createVinstaInboundBridge(api: OpenClawPluginApi) {
 
     if (!notificationsPrimed) {
       rememberNotificationIds(trackedNotificationIds, sorted);
+      for (const n of sorted) primedNotificationIds.add(n.id);
       notificationsPrimed = true;
       return 0;
     }
@@ -1214,6 +1222,7 @@ export function createVinstaInboundBridge(api: OpenClawPluginApi) {
           dispatchedNotificationIds,
           senderReplyTimestamps,
           senderNotifyTimestamps,
+          notificationsPrimed ? null : primedNotificationIds,
           observeNotifications,
         );
 
@@ -1383,6 +1392,7 @@ export function createVinstaInboundBridge(api: OpenClawPluginApi) {
       notificationsPrimed = false;
       trackedNotificationIds.clear();
       dispatchedNotificationIds.clear();
+      primedNotificationIds.clear();
       lastDispatchedUpdateVersion = null;
 
       try {
