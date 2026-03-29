@@ -390,7 +390,7 @@ export function registerVinstaCli(params: {
         });
       });
 
-      if (request.state && result.state && request.state !== result.state) {
+      if (!request.state || !result.state || request.state !== result.state) {
         throw new Error("Returned state does not match the pending auth request.");
       }
 

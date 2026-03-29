@@ -17,7 +17,7 @@ const EXTRACTION_REQUEST_PREFIX = String.raw`(?:what(?:'s| is)|${EXTRACTION_VERB
 
 function buildInboundExtractionPattern(target: string) {
   return new RegExp(
-    String.raw`\b${EXTRACTION_REQUEST_PREFIX}\s+(?:me\s+)?(?:your|the)\s+(?:\w+\s+)*?(?:${target})\b`,
+    String.raw`\b${EXTRACTION_REQUEST_PREFIX}\s+(?:me\s+)?(?:your|the)\s+(?:\w+\s+){0,8}(?:${target})\b`,
     "i",
   );
 }

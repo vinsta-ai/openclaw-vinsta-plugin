@@ -722,7 +722,11 @@ export class VinstaClient {
             continue;
           }
 
-          await params.onEvent(JSON.parse(data) as VinstaNotificationStreamEvent);
+          try {
+            await params.onEvent(JSON.parse(data) as VinstaNotificationStreamEvent);
+          } catch {
+            // Skip malformed SSE frames rather than breaking the stream
+          }
         }
       }
     } finally {
