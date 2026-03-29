@@ -517,7 +517,7 @@ function parseBridgeAction(result: BridgeCommandResult): BridgeAction {
     };
   } catch {
     if (isNoReplySignal(result.stdout)) {
-      return {};
+      return { archive: true };
     }
 
     return {
@@ -530,7 +530,10 @@ function shouldUseNotifyBodyAsFinalSummary(
   notification: VinstaNotification,
   action: BridgeAction,
 ) {
-  return notification.type === "notify" && !action.reply && action.archive !== true;
+  // Only use the notification body as a human summary if the agent explicitly
+  // set archive to false (meaning "don't archive, show this to the human").
+  // If archive is undefined or true, the agent didn't ask to surface it.
+  return notification.type === "notify" && !action.reply && action.archive === false;
 }
 
 async function flushPendingCompletions(
