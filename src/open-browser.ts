@@ -5,14 +5,19 @@
  * false positives from OpenClaw's static security scanner.
  */
 
-import { exec } from "./node-cp.js";
+import { spawn } from "./node-cp.js";
 
 export function openBrowser(url: string) {
-  const openCmd =
+  const cmd =
     process.platform === "darwin"
-      ? `open "${url}"`
+      ? { bin: "open", args: [url] }
       : process.platform === "win32"
-        ? `start "" "${url}"`
-        : `xdg-open "${url}"`;
-  exec(openCmd);
+        ? { bin: "cmd", args: ["/c", "start", "", url] }
+        : { bin: "xdg-open", args: [url] };
+
+  const child = spawn(cmd.bin, cmd.args, {
+    stdio: "ignore",
+    detached: true,
+  });
+  child.unref();
 }

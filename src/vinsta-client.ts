@@ -698,6 +698,7 @@ export class VinstaClient {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffered = "";
+    const MAX_SSE_BUFFER = 1_048_576; // 1 MB
 
     try {
       for (;;) {
@@ -708,6 +709,13 @@ export class VinstaClient {
         }
 
         buffered += decoder.decode(value, { stream: true });
+
+        // Guard against unbounded buffer growth (e.g. server never sends \n\n)
+        if (buffered.length > MAX_SSE_BUFFER) {
+          buffered = "";
+          continue;
+        }
+
         const parsed = parseSsePayload(buffered);
         buffered = parsed.remaining;
 
@@ -722,11 +730,14 @@ export class VinstaClient {
             continue;
           }
 
+          let event: VinstaNotificationStreamEvent;
           try {
-            await params.onEvent(JSON.parse(data) as VinstaNotificationStreamEvent);
+            event = JSON.parse(data) as VinstaNotificationStreamEvent;
           } catch {
             // Skip malformed SSE frames rather than breaking the stream
+            continue;
           }
+          await params.onEvent(event);
         }
       }
     } finally {

@@ -1060,8 +1060,11 @@ export function createVinstaInboundBridge(api: OpenClawPluginApi) {
               action: "read",
               accessToken: ctx.accessToken,
             });
-          } catch {
+          } catch (error) {
             // Best-effort — don't fail the cycle if this fails
+            api.logger.warn(
+              `[vinsta] Failed to mark notification ${notification.id} as read: ${error instanceof Error ? error.message : String(error)}`,
+            );
           }
         }
       }
