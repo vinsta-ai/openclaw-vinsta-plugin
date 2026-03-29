@@ -591,7 +591,7 @@ async function processBridgeOnce(
   dispatchedNotificationIds: Set<string>,
   senderReplyTimestamps: Map<string, number[]>,
   senderNotifyTimestamps: Map<string, number[]>,
-  primedNotificationIds: Set<string> | null,
+  primedNotificationIds: Set<string>,
   observeNotifications?: (
     notifications: VinstaNotification[],
     config: ReturnType<typeof resolveVinstaPluginConfig>,
@@ -671,7 +671,7 @@ async function processBridgeOnce(
   const candidates = payload.notifications
     .filter((notification) => {
       // Skip notifications that existed before the bridge started (priming guard)
-      if (primedNotificationIds?.has(notification.id)) {
+      if (primedNotificationIds.has(notification.id)) {
         return false;
       }
 
@@ -1222,7 +1222,7 @@ export function createVinstaInboundBridge(api: OpenClawPluginApi) {
           dispatchedNotificationIds,
           senderReplyTimestamps,
           senderNotifyTimestamps,
-          notificationsPrimed ? null : primedNotificationIds,
+          primedNotificationIds,
           observeNotifications,
         );
 
