@@ -42,7 +42,6 @@ import {
   maybeSanitizeHumanNotificationForDelivery,
   readNotificationAutomationState,
   shouldSuppressFreshHumanNotificationForBridgeCommand,
-  type NotificationAutomationState,
 } from "./inbound-bridge-helpers.js";
 import { maybeAutoUpdate, type MaybeAutoUpdateResult } from "./update-check.js";
 
@@ -232,7 +231,6 @@ function shouldDeferBridgeRetry(retryDelays: Map<string, number>, notificationId
 
   return true;
 }
-
 
 function buildVinstaThreadsUrl(config: ReturnType<typeof resolveVinstaPluginConfig>) {
   const base = config.appUrl.replace(/\/$/, "");
@@ -879,11 +877,13 @@ async function processBridgeOnce(
             `[vinsta] Grant review for ${notification.id}: action=${grantAction}, granted=${grantResult.granted}`,
           );
         } catch (error) {
+          await surfaceBridgeFailure(notification, claimedAt);
           api.logger.error(
             `[vinsta] Failed to process grant review ${notification.id}: ${
               error instanceof Error ? error.message : String(error)
             }`,
           );
+          continue;
         }
 
         processed += 1;
