@@ -590,6 +590,7 @@ async function processBridgeOnce(
   failedBridgeNotificationIds: Map<string, number>,
   dispatchedNotificationIds: Set<string>,
   senderReplyTimestamps: Map<string, number[]>,
+  senderNotifyTimestamps: Map<string, number[]>,
   observeNotifications?: (
     notifications: VinstaNotification[],
     config: ReturnType<typeof resolveVinstaPluginConfig>,
@@ -705,16 +706,20 @@ async function processBridgeOnce(
           notificationId: notification.id,
           accessToken: auth.tokens.accessToken,
         });
-        if (claim.claimed) {
+        if (claim.claimed && claim.notification.readAt) {
           await client.completeBridgeNotification({
             notificationId: notification.id,
-            claimedAt: claim.notification.readAt ?? "",
+            claimedAt: claim.notification.readAt,
             accessToken: auth.tokens.accessToken,
             reply: undefined,
             archive: true,
           });
         }
-      } catch {}
+      } catch (error) {
+        api.logger.warn(
+          `[vinsta] Failed to archive rate-limited notification ${notification.id}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
       // Notify human if still under the notify limit
       if (!isRateLimited(senderNotifyTimestamps, candidateSender, inboundNotifyRateLimitWindow, inboundNotifyRateLimitMax)) {
         recordTimestamp(senderNotifyTimestamps, candidateSender);
@@ -1147,7 +1152,11 @@ export function createVinstaInboundBridge(api: OpenClawPluginApi) {
               action: "read",
               accessToken: ctx.accessToken,
             });
-          } catch {}
+          } catch (error) {
+            api.logger.warn(
+              `[vinsta] Failed to mark rate-limited notification ${notification.id} as read: ${error instanceof Error ? error.message : String(error)}`,
+            );
+          }
         }
         continue;
       }
@@ -1204,6 +1213,7 @@ export function createVinstaInboundBridge(api: OpenClawPluginApi) {
           failedBridgeNotificationIds,
           dispatchedNotificationIds,
           senderReplyTimestamps,
+          senderNotifyTimestamps,
           observeNotifications,
         );
 
