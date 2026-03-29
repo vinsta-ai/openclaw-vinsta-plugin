@@ -693,6 +693,40 @@ async function processBridgeOnce(
   let processed = 0;
 
   for (const notification of candidates) {
+    // ── Per-sender bridge rate limiter: skip processing entirely if rate-limited ──
+    const candidateSender = parseSenderHandle(notification);
+    if (candidateSender && isRateLimited(senderReplyTimestamps, candidateSender, replyRateLimitWindow, replyRateLimitMax)) {
+      api.logger.info(
+        `[vinsta] Skipping bridge processing for rate-limited sender @${candidateSender} (${notification.id})`,
+      );
+      // Claim and archive immediately — no bridge command, no reply
+      try {
+        const claim = await client.claimNotification({
+          notificationId: notification.id,
+          accessToken: auth.tokens.accessToken,
+        });
+        if (claim.claimed) {
+          await client.completeBridgeNotification({
+            notificationId: notification.id,
+            claimedAt: claim.notification.readAt ?? "",
+            accessToken: auth.tokens.accessToken,
+            reply: undefined,
+            archive: true,
+          });
+        }
+      } catch {}
+      // Notify human if still under the notify limit
+      if (!isRateLimited(senderNotifyTimestamps, candidateSender, inboundNotifyRateLimitWindow, inboundNotifyRateLimitMax)) {
+        recordTimestamp(senderNotifyTimestamps, candidateSender);
+        await dedupDispatchHumanNotification(
+          api, config,
+          buildHumanSummaryNotification({ original: notification, handle: config.handle, summary: notification.body.trim() }),
+          dispatchedNotificationIds,
+        );
+      }
+      continue;
+    }
+
     inFlight.add(notification.id);
     let claimedAt: string | null = null;
     let commandCompleted = false;
