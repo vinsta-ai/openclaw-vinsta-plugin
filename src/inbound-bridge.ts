@@ -1152,46 +1152,32 @@ export function createVinstaInboundBridge(api: OpenClawPluginApi) {
         api.logger.info(
           `[vinsta] Rate-limited inbound notification from @${sender} for ${notification.id} (>${inboundNotifyRateLimitMax} in ${inboundNotifyRateLimitWindow / 60_000}m)`,
         );
-        // Still mark as read so it doesn't pile up, but don't notify the human
-        if (ctx && !notification.readAt) {
-          try {
-            await ctx.client.updateNotification({
-              notificationId: notification.id,
-              action: "read",
-              accessToken: ctx.accessToken,
-            });
-          } catch (error) {
-            api.logger.warn(
-              `[vinsta] Failed to mark rate-limited notification ${notification.id} as read: ${error instanceof Error ? error.message : String(error)}`,
-            );
-          }
+      } else {
+        if (sender) {
+          recordTimestamp(senderNotifyTimestamps, sender);
         }
-        continue;
-      }
-      if (sender) {
-        recordTimestamp(senderNotifyTimestamps, sender);
+
+        // Cross-instance dedup: if another instance already dispatched externally,
+        // only show in the local OpenClaw UI to avoid duplicate external delivery.
+        if (notification.readAt) {
+          await dedupDispatchHumanNotification(api, config, notification, dispatchedNotificationIds, { uiOnly: true });
+        } else {
+          await dedupDispatchHumanNotification(api, config, notification, dispatchedNotificationIds);
+        }
       }
 
-      // Cross-instance dedup: if another instance already marked the notification read,
-      // only show in the local OpenClaw UI — skip the external channel to avoid duplicates.
-      if (notification.readAt) {
-        await dedupDispatchHumanNotification(api, config, notification, dispatchedNotificationIds, { uiOnly: true });
-      } else {
-        await dedupDispatchHumanNotification(api, config, notification, dispatchedNotificationIds);
-        // Mark as read so other instances know external dispatch was handled
-        if (ctx) {
-          try {
-            await ctx.client.updateNotification({
-              notificationId: notification.id,
-              action: "read",
-              accessToken: ctx.accessToken,
-            });
-          } catch (error) {
-            // Best-effort — don't fail the cycle if this fails
-            api.logger.warn(
-              `[vinsta] Failed to mark notification ${notification.id} as read: ${error instanceof Error ? error.message : String(error)}`,
-            );
-          }
+      // Archive after dispatch (or rate-limit skip) so it never reappears
+      if (ctx && !notification.archivedAt) {
+        try {
+          await ctx.client.updateNotification({
+            notificationId: notification.id,
+            action: "archive",
+            accessToken: ctx.accessToken,
+          });
+        } catch (error) {
+          api.logger.warn(
+            `[vinsta] Failed to archive notification ${notification.id}: ${error instanceof Error ? error.message : String(error)}`,
+          );
         }
       }
     }
