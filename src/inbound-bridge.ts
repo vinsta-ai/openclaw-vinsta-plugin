@@ -1218,11 +1218,7 @@ export function createVinstaInboundBridge(api: OpenClawPluginApi) {
       if (handledSilentlyByBridge) {
         continue;
       }
-      if (dispatchedNotificationIds.has(notification.id)) {
-        continue;
-      }
-      dispatchedNotificationIds.add(notification.id);
-      await dispatchHumanNotification(api, config, notification);
+      await dedupDispatchHumanNotification(api, config, notification, dispatchedNotificationIds);
     }
 
     return freshNotifications.length;
@@ -1288,7 +1284,7 @@ export function createVinstaInboundBridge(api: OpenClawPluginApi) {
             bridgeClaimedAt: null,
             archivedAt: null,
           };
-          await dispatchHumanNotification(api, config, notification);
+          await dedupDispatchHumanNotification(api, config, notification, dispatchedNotificationIds);
         }
       } catch (err) {
         api.logger.error(
