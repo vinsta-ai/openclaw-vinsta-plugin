@@ -71,6 +71,8 @@ const bridgeClaimTtlMs = 15 * 60_000;
 const bridgeFailureRetryDelayMs = 60_000;
 const bridgeStreamReconnectMs = 2_000;
 const maxTrackedNotifications = 512;
+const replyRateLimitWindow = 5 * 60_000; // 5 minutes
+const replyRateLimitMax = 3; // max replies per sender in window
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -230,6 +232,27 @@ function shouldDeferBridgeRetry(retryDelays: Map<string, number>, notificationId
   }
 
   return true;
+}
+
+function isReplyRateLimited(
+  replyTimestamps: Map<string, number[]>,
+  senderHandle: string,
+) {
+  const now = Date.now();
+  const timestamps = replyTimestamps.get(senderHandle);
+  if (!timestamps) return false;
+  const recent = timestamps.filter((t) => t > now - replyRateLimitWindow);
+  replyTimestamps.set(senderHandle, recent);
+  return recent.length >= replyRateLimitMax;
+}
+
+function recordReply(
+  replyTimestamps: Map<string, number[]>,
+  senderHandle: string,
+) {
+  const timestamps = replyTimestamps.get(senderHandle) ?? [];
+  timestamps.push(Date.now());
+  replyTimestamps.set(senderHandle, timestamps);
 }
 
 function buildVinstaThreadsUrl(config: ReturnType<typeof resolveVinstaPluginConfig>) {
@@ -562,6 +585,7 @@ async function processBridgeOnce(
   pendingCompletions: Map<string, PendingBridgeCompletion>,
   failedBridgeNotificationIds: Map<string, number>,
   dispatchedNotificationIds: Set<string>,
+  senderReplyTimestamps: Map<string, number[]>,
   observeNotifications?: (
     notifications: VinstaNotification[],
     config: ReturnType<typeof resolveVinstaPluginConfig>,
@@ -926,6 +950,21 @@ async function processBridgeOnce(
           action.notifyHuman = `Outbound reply blocked by content guard: ${outboundScreen.reason}`;
         }
       }
+      // ── Per-sender reply rate limiter (prevents agent ping-pong loops) ──
+      const sender = parseSenderHandle(notification);
+      if (action.reply && sender && isReplyRateLimited(senderReplyTimestamps, sender)) {
+        api.logger.info(
+          `[vinsta] Rate-limited reply to @${sender} for ${notification.id} (>${replyRateLimitMax} replies in ${replyRateLimitWindow / 60_000}m)`,
+        );
+        action.reply = undefined;
+        if (!action.notifyHuman) {
+          action.notifyHuman = notification.body.trim();
+        }
+      }
+      if (action.reply && sender) {
+        recordReply(senderReplyTimestamps, sender);
+      }
+
       const finalOwnerSummary =
         action.notifyHuman ||
         (shouldUseNotifyBodyAsFinalSummary(notification, action)
@@ -998,6 +1037,7 @@ export function createVinstaInboundBridge(api: OpenClawPluginApi) {
   const trackedNotificationIds = new Set<string>();
   const dispatchedNotificationIds = new Set<string>();
   const failedBridgeNotificationIds = new Map<string, number>();
+  const senderReplyTimestamps = new Map<string, number[]>();
   let lastDispatchedUpdateVersion: string | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let streamAbortController: AbortController | null = null;
@@ -1094,6 +1134,7 @@ export function createVinstaInboundBridge(api: OpenClawPluginApi) {
           pendingCompletions,
           failedBridgeNotificationIds,
           dispatchedNotificationIds,
+          senderReplyTimestamps,
           observeNotifications,
         );
 

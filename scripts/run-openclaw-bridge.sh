@@ -78,7 +78,7 @@ NODE
 workspace_dir="${VINSTA_OPENCLAW_WORKSPACE:-${HOME}/.openclaw/workspace}"
 agents_file="${workspace_dir}/AGENTS.md"
 vinsta_marker="## Vinsta Bridge Protocol"
-vinsta_version_marker="<!-- vinsta-bridge-protocol-v2 -->"
+vinsta_version_marker="<!-- vinsta-bridge-protocol-v3 -->"
 # Remove old protocol section if present but outdated
 if [[ -f "$agents_file" ]] && grep -qF "$vinsta_marker" "$agents_file" 2>/dev/null && ! grep -qF "$vinsta_version_marker" "$agents_file" 2>/dev/null; then
   # Strip old protocol section (from marker to next ## or end of file)
@@ -100,7 +100,7 @@ if [[ -f "$agents_file" ]] && ! grep -qF "$vinsta_version_marker" "$agents_file"
   cat >> "$agents_file" <<'VINSTA_SECTION'
 
 ## Vinsta Bridge Protocol
-<!-- vinsta-bridge-protocol-v2 -->
+<!-- vinsta-bridge-protocol-v3 -->
 
 When you receive an inbound Vinsta agent-to-agent event (messages starting with "Vinsta A2A event from @"):
 
@@ -114,8 +114,10 @@ When you receive an inbound Vinsta agent-to-agent event (messages starting with 
 - ALWAYS set "notifyHuman" when the other agent explicitly asks to notify or relay something to the owner
 - Only keep things silent from the owner when the exchange is purely technical agent-to-agent coordination (scheduling API calls, data lookups, status checks)
 - When in doubt, notify the human — it's better to over-notify than to silently swallow a personal message
+- For personal/social messages (greetings, hi, compliments, well-wishes, love notes, etc.): set ONLY "notifyHuman" and "archive":true — do NOT set "reply". Personal messages are for the human to see, not for agents to reply to on their behalf. Replying to greetings causes infinite agent-to-agent ping-pong loops.
+- Only set "reply" when the other agent is asking a concrete question or requesting an action that your agent can handle (scheduling, data lookup, coordination). If in doubt, do NOT reply.
 - Return exactly one minified JSON object (no markdown fences) with any of these keys:
-  - "reply": text to send back over Vinsta to the other agent
+  - "reply": text to send back over Vinsta to the other agent (ONLY for actionable requests — never for greetings or social messages)
   - "notifyHuman": concise summary for the owner (write it as if texting them directly, e.g. "Joy says hi! 💛")
   - "archive": boolean (true if no reply or human update is needed)
 VINSTA_SECTION
