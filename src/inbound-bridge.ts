@@ -607,6 +607,21 @@ async function dispatchHumanNotification(
   dispatchHumanNotificationToOpenClawUi(api, config, safeNotification);
 }
 
+const noReplySignals = new Set([
+  "no_reply",
+  "no reply",
+  "noreply",
+  "skip",
+  "ignore",
+  "pass",
+  "none",
+  "",
+]);
+
+function isNoReplySignal(text: string) {
+  return noReplySignals.has(text.trim().toLowerCase());
+}
+
 function parseBridgeAction(result: BridgeCommandResult): BridgeAction {
   if (!result.stdout) {
     return {};
@@ -626,12 +641,18 @@ function parseBridgeAction(result: BridgeCommandResult): BridgeAction {
           ? parsed.notify_human.trim()
           : undefined;
 
+    const rawReply = typeof parsed.reply === "string" ? parsed.reply.trim() : undefined;
+
     return {
-      reply: typeof parsed.reply === "string" ? parsed.reply.trim() : undefined,
+      reply: rawReply && !isNoReplySignal(rawReply) ? rawReply : undefined,
       notifyHuman: notifyHuman || undefined,
       archive: typeof parsed.archive === "boolean" ? parsed.archive : undefined,
     };
   } catch {
+    if (isNoReplySignal(result.stdout)) {
+      return {};
+    }
+
     return {
       reply: result.stdout,
     };
@@ -651,6 +672,7 @@ async function flushPendingCompletions(
   config: ReturnType<typeof resolveVinstaPluginConfig>,
   accessToken: string,
   pendingCompletions: Map<string, PendingBridgeCompletion>,
+  dispatchedNotificationIds: Set<string>,
 ) {
   for (const completion of pendingCompletions.values()) {
     try {
@@ -662,7 +684,7 @@ async function flushPendingCompletions(
         archive: completion.archive,
       });
       if (completion.humanNotification) {
-        await dispatchHumanNotification(api, config, completion.humanNotification);
+        await dedupDispatchHumanNotification(api, config, completion.humanNotification, dispatchedNotificationIds);
       }
       pendingCompletions.delete(completion.notificationId);
     } catch (error) {
@@ -675,11 +697,30 @@ async function flushPendingCompletions(
   }
 }
 
+async function dedupDispatchHumanNotification(
+  api: OpenClawPluginApi,
+  config: ReturnType<typeof resolveVinstaPluginConfig>,
+  notification: VinstaNotification,
+  dispatchedIds: Set<string>,
+) {
+  if (dispatchedIds.has(notification.id)) {
+    return;
+  }
+  dispatchedIds.add(notification.id);
+  while (dispatchedIds.size > maxTrackedNotifications) {
+    const oldest = dispatchedIds.values().next().value;
+    if (!oldest) break;
+    dispatchedIds.delete(oldest);
+  }
+  await dispatchHumanNotification(api, config, notification);
+}
+
 async function processBridgeOnce(
   api: OpenClawPluginApi,
   inFlight: Set<string>,
   pendingCompletions: Map<string, PendingBridgeCompletion>,
   failedBridgeNotificationIds: Map<string, number>,
+  dispatchedNotificationIds: Set<string>,
   observeNotifications?: (
     notifications: VinstaNotification[],
     config: ReturnType<typeof resolveVinstaPluginConfig>,
@@ -710,6 +751,7 @@ async function processBridgeOnce(
     config,
     auth.tokens.accessToken,
     pendingCompletions,
+    dispatchedNotificationIds,
   );
 
   const payload = await client.listNotifications({
@@ -741,7 +783,7 @@ async function processBridgeOnce(
       );
     }
 
-    await dispatchHumanNotification(api, config, notification);
+    await dedupDispatchHumanNotification(api, config, notification, dispatchedNotificationIds);
   };
 
   if (!config.bridgeCommand) {
@@ -820,7 +862,7 @@ async function processBridgeOnce(
           claimedAt,
           accessToken: auth.tokens.accessToken,
         });
-        await dispatchHumanNotification(api, config, claim.notification);
+        await dedupDispatchHumanNotification(api, config, claim.notification, dispatchedNotificationIds);
         continue;
       }
 
@@ -867,7 +909,7 @@ async function processBridgeOnce(
               archive: blockedCompletion.archive,
             });
             if (blockedCompletion.humanNotification) {
-              await dispatchHumanNotification(api, config, blockedCompletion.humanNotification);
+              await dedupDispatchHumanNotification(api, config, blockedCompletion.humanNotification, dispatchedNotificationIds);
             }
           } catch (error) {
             pendingCompletions.set(notification.id, blockedCompletion);
@@ -977,7 +1019,7 @@ async function processBridgeOnce(
             archive: true,
           });
           if (pendingCompletion.humanNotification) {
-            await dispatchHumanNotification(api, config, pendingCompletion.humanNotification);
+            await dedupDispatchHumanNotification(api, config, pendingCompletion.humanNotification, dispatchedNotificationIds);
           }
 
           api.logger.info(
@@ -1062,7 +1104,7 @@ async function processBridgeOnce(
           archive: pendingCompletion.archive,
         });
         if (pendingCompletion.humanNotification) {
-          await dispatchHumanNotification(api, config, pendingCompletion.humanNotification);
+          await dedupDispatchHumanNotification(api, config, pendingCompletion.humanNotification, dispatchedNotificationIds);
         }
       } catch (error) {
         pendingCompletions.set(notification.id, pendingCompletion);
@@ -1101,7 +1143,9 @@ export function createVinstaInboundBridge(api: OpenClawPluginApi) {
   const inFlight = new Set<string>();
   const pendingCompletions = new Map<string, PendingBridgeCompletion>();
   const trackedNotificationIds = new Set<string>();
+  const dispatchedNotificationIds = new Set<string>();
   const failedBridgeNotificationIds = new Map<string, number>();
+  let lastDispatchedUpdateVersion: string | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let streamAbortController: AbortController | null = null;
   let streamTask: Promise<void> | null = null;
@@ -1147,6 +1191,10 @@ export function createVinstaInboundBridge(api: OpenClawPluginApi) {
       if (handledSilentlyByBridge) {
         continue;
       }
+      if (dispatchedNotificationIds.has(notification.id)) {
+        continue;
+      }
+      dispatchedNotificationIds.add(notification.id);
       await dispatchHumanNotification(api, config, notification);
     }
 
@@ -1173,6 +1221,7 @@ export function createVinstaInboundBridge(api: OpenClawPluginApi) {
           inFlight,
           pendingCompletions,
           failedBridgeNotificationIds,
+          dispatchedNotificationIds,
           observeNotifications,
         );
 
@@ -1195,7 +1244,8 @@ export function createVinstaInboundBridge(api: OpenClawPluginApi) {
         const config = resolveVinstaPluginConfig(current, process.env);
         const updateResult = await maybeAutoUpdate(api, config);
 
-        if (updateResult.updateAvailable && updateResult.latestVersion) {
+        if (updateResult.updateAvailable && updateResult.latestVersion && lastDispatchedUpdateVersion !== updateResult.latestVersion) {
+          lastDispatchedUpdateVersion = updateResult.latestVersion;
           const notification: VinstaNotification = {
             id: `plugin-update-${updateResult.latestVersion}`,
             recipientId: config.handle ?? "",
@@ -1340,6 +1390,8 @@ export function createVinstaInboundBridge(api: OpenClawPluginApi) {
       stopped = false;
       notificationsPrimed = false;
       trackedNotificationIds.clear();
+      dispatchedNotificationIds.clear();
+      lastDispatchedUpdateVersion = null;
 
       try {
         await runCycle();
