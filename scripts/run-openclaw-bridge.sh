@@ -155,7 +155,7 @@ run_openclaw_json() {
         exit 127
       fi
 
-      local bridge_session_key="vinsta-bridge:${safe_sender}"
+      local bridge_session_key="vinsta-bridge_${safe_sender}"
       local cmd=("${pnpm_cmd[@]}" --silent openclaw agent --session-id "$bridge_session_key" --message "$prompt" --json)
       if [[ "$openclaw_mode" == "local" ]]; then
         cmd+=(--local)
@@ -166,7 +166,7 @@ run_openclaw_json() {
     return
   fi
 
-  local bridge_session_key="vinsta-bridge:${safe_sender}"
+  local bridge_session_key="vinsta-bridge_${safe_sender}"
   local cmd=(openclaw agent --session-id "$bridge_session_key" --message "$prompt" --json)
   if [[ "$openclaw_mode" == "local" ]]; then
     cmd+=(--local)

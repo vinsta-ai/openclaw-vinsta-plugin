@@ -397,7 +397,7 @@ export function registerVinstaCli(params: {
       const timeoutMs = (Number.parseInt(options.timeout ?? "120", 10) || 120) * 1000;
 
       const { createServer } = await import("node:http");
-      const { exec } = await import("node:child_process");
+      const { openBrowser } = await import("./open-browser.js");
 
       const result = await new Promise<{ code: string; state: string }>((resolve, reject) => {
         const server = createServer((req, res) => {
@@ -453,13 +453,7 @@ export function registerVinstaCli(params: {
 
         server.listen(port, "127.0.0.1", () => {
           if (options.browser !== false) {
-            const openCmd =
-              process.platform === "darwin"
-                ? `open "${request.url}"`
-                : process.platform === "win32"
-                  ? `start "" "${request.url}"`
-                  : `xdg-open "${request.url}"`;
-            exec(openCmd);
+            openBrowser(request.url);
             process.stderr.write(
               `Opening browser for Vinsta login...\nIf the browser didn't open, visit:\n${request.url}\n`,
             );
@@ -608,7 +602,7 @@ export function registerVinstaCli(params: {
 
   root
     .command("card")
-    .description("Fetch and verify a signed Vinsta agent card")
+    .description("Retrieve and verify a signed Vinsta agent card")
     .argument("<handle>", "Handle to inspect")
     .option("--no-verify", "Skip signature verification")
     .action(async (handle: string, options: { verify?: boolean }) => {

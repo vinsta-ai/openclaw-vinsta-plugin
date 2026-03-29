@@ -1,12 +1,14 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
-import { spawn } from "node:child_process";
 import {
   normalizeAgentId,
   type OpenClawPluginApi,
   type OpenClawPluginService,
 } from "openclaw/plugin-sdk";
+import {
+  type BridgeCommandResult,
+  runBridgeCommand,
+  runBridgeNotifyCommand,
+  runOpenClawNativeNotifyTarget,
+} from "./spawn-runners.js";
 
 /** Resolves the main session key from the OpenClaw config.
  *  Replaces the removed `resolveMainSessionKey` export from openclaw/plugin-sdk. */
@@ -40,16 +42,9 @@ import {
   maybeSanitizeHumanNotificationForDelivery,
   readNotificationAutomationState,
   shouldSuppressFreshHumanNotificationForBridgeCommand,
-  stripVinstaPluginFromNotifyConfig,
   type NotificationAutomationState,
 } from "./inbound-bridge-helpers.js";
 import { maybeAutoUpdate, type MaybeAutoUpdateResult } from "./update-check.js";
-
-type BridgeCommandResult = {
-  stdout: string;
-  stderr: string;
-  exitCode: number;
-};
 
 type BridgeAction = {
   reply?: string;
@@ -238,190 +233,6 @@ function shouldDeferBridgeRetry(retryDelays: Map<string, number>, notificationId
   return true;
 }
 
-async function runBridgeCommand(command: string, notification: VinstaNotification, handle: string) {
-  return new Promise<BridgeCommandResult>((resolve, reject) => {
-    const senderHandle = parseSenderHandle(notification);
-    const automation = readNotificationAutomationState(notification);
-    const payload = JSON.stringify(
-      {
-        notification,
-        handle,
-        senderHandle,
-      },
-      null,
-      2,
-    );
-    const child = spawn(process.env.SHELL || "sh", ["-lc", command], {
-      env: {
-        ...process.env,
-        VINSTA_HANDLE: handle,
-        VINSTA_NOTIFICATION_ID: notification.id,
-        VINSTA_NOTIFICATION_TYPE: notification.type,
-        VINSTA_NOTIFICATION_TITLE: notification.title,
-        VINSTA_NOTIFICATION_BODY: notification.body,
-        VINSTA_MESSAGE_BODY: notification.body,
-        VINSTA_FROM_HANDLE: senderHandle ?? "",
-        VINSTA_AGENT_AUTO_STEP: automation ? String(automation.autoStep) : "",
-        VINSTA_AGENT_AUTO_LIMIT: automation ? String(automation.autoLimit) : "",
-        VINSTA_AGENT_APPROVAL_STATUS: automation?.approvalStatus ?? "",
-        VINSTA_AGENT_STOP_REASON: automation?.stopReason ?? "",
-        VINSTA_HUMAN_IN_THE_LOOP: automation?.humanInLoopEnabled ? "1" : "0",
-      },
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-
-    let stdout = "";
-    let stderr = "";
-
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString();
-    });
-
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString();
-    });
-
-    child.on("error", reject);
-    child.on("close", (exitCode) => {
-      resolve({
-        stdout: stdout.trim(),
-        stderr: stderr.trim(),
-        exitCode: exitCode ?? 1,
-      });
-    });
-
-    child.stdin.end(payload);
-  });
-}
-
-async function runBridgeNotifyCommand(
-  command: string,
-  notification: VinstaNotification,
-  handle: string,
-) {
-  return new Promise<BridgeCommandResult>((resolve, reject) => {
-    const senderHandle = parseSenderHandle(notification);
-    const automation = readNotificationAutomationState(notification);
-    const payload = JSON.stringify(
-      {
-        notification,
-        handle,
-        senderHandle,
-      },
-      null,
-      2,
-    );
-    const child = spawn(process.env.SHELL || "sh", ["-lc", command], {
-      env: {
-        ...process.env,
-        VINSTA_HANDLE: handle,
-        VINSTA_NOTIFICATION_ID: notification.id,
-        VINSTA_NOTIFICATION_TYPE: notification.type,
-        VINSTA_NOTIFICATION_TITLE: notification.title,
-        VINSTA_NOTIFICATION_BODY: notification.body,
-        VINSTA_MESSAGE_BODY: notification.body,
-        VINSTA_FROM_HANDLE: senderHandle ?? "",
-        VINSTA_AGENT_AUTO_STEP: automation ? String(automation.autoStep) : "",
-        VINSTA_AGENT_AUTO_LIMIT: automation ? String(automation.autoLimit) : "",
-        VINSTA_AGENT_APPROVAL_STATUS: automation?.approvalStatus ?? "",
-        VINSTA_AGENT_STOP_REASON: automation?.stopReason ?? "",
-        VINSTA_HUMAN_IN_THE_LOOP: automation?.humanInLoopEnabled ? "1" : "0",
-      },
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-
-    let stdout = "";
-    let stderr = "";
-
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString();
-    });
-
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString();
-    });
-
-    child.on("error", reject);
-    child.on("close", (exitCode) => {
-      resolve({
-        stdout: stdout.trim(),
-        stderr: stderr.trim(),
-        exitCode: exitCode ?? 1,
-      });
-    });
-
-    child.stdin.end(payload);
-  });
-}
-
-function shellQuote(value: string) {
-  return `'${value.replace(/'/g, `'\"'\"'`)}'`;
-}
-
-async function withNotifyConfigPath<T>(
-  api: OpenClawPluginApi,
-  runner: (configPath: string) => Promise<T>,
-) {
-  const currentConfig = api.runtime.config.loadConfig();
-  const childConfig = stripVinstaPluginFromNotifyConfig(currentConfig);
-  const tempDir = await mkdtemp(path.join(tmpdir(), "vinsta-openclaw-notify-"));
-  const configPath = path.join(tempDir, "openclaw-notify.json");
-
-  try {
-    await writeFile(configPath, `${JSON.stringify(childConfig, null, 2)}\n`, "utf8");
-    return await runner(configPath);
-  } finally {
-    await rm(tempDir, { recursive: true, force: true }).catch(() => {});
-  }
-}
-
-async function runOpenClawNativeNotifyTarget(input: {
-  api: OpenClawPluginApi;
-  channel: string;
-  to: string;
-  accountId?: string;
-  text: string;
-}) {
-  const command = [
-    "openclaw message send",
-    `--channel ${shellQuote(input.channel)}`,
-    ...(input.accountId ? [`--account ${shellQuote(input.accountId)}`] : []),
-    `--target ${shellQuote(input.to)}`,
-    `--message ${shellQuote(input.text)}`,
-  ].join(" ");
-
-  return withNotifyConfigPath(input.api, (configPath) => {
-    return new Promise<BridgeCommandResult>((resolve, reject) => {
-      const child = spawn(process.env.SHELL || "sh", ["-lc", command], {
-        env: {
-          ...process.env,
-          OPENCLAW_CONFIG_PATH: configPath,
-        },
-        stdio: ["ignore", "pipe", "pipe"],
-      });
-
-      let stdout = "";
-      let stderr = "";
-
-      child.stdout.on("data", (chunk) => {
-        stdout += chunk.toString();
-      });
-
-      child.stderr.on("data", (chunk) => {
-        stderr += chunk.toString();
-      });
-
-      child.on("error", reject);
-      child.on("close", (exitCode) => {
-        resolve({
-          stdout: stdout.trim(),
-          stderr: stderr.trim(),
-          exitCode: exitCode ?? 1,
-        });
-      });
-    });
-  });
-}
 
 function buildVinstaThreadsUrl(config: ReturnType<typeof resolveVinstaPluginConfig>) {
   const base = config.appUrl.replace(/\/$/, "");
@@ -879,7 +690,7 @@ async function processBridgeOnce(
         continue;
       }
 
-      // ── Post-claim race guard: release if approval is now pending ──
+      // ── After-claim race guard: release if approval is now pending ──
       const claimAutomation = readNotificationAutomationState(claim.notification);
       if (claimAutomation?.approvalStatus === "pending" || claimAutomation?.stopReason === "human_rejected") {
         api.logger.info(
@@ -912,7 +723,7 @@ async function processBridgeOnce(
         continue;
       }
 
-      // ── Post-approval: re-run the bridge command so the agent actually replies ──
+      // ── After approval: re-run the bridge command so the agent actually replies ──
       if (claimAutomation?.approvalStatus === "approved") {
         api.logger.info(
           `[vinsta] Notification ${notification.id} was approved — running bridge command.`,
@@ -1027,22 +838,13 @@ async function processBridgeOnce(
 
         // Call the grant API
         try {
-          const grantUrl = `${config.appUrl.replace(/\/$/, "")}/api/permissions/grant`;
-          const grantResponse = await fetch(grantUrl, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${auth.tokens.accessToken}`,
-            },
-            body: JSON.stringify({
-              action: grantAction,
-              senderHandle,
-              capability: capability || undefined,
-              notificationId: notification.id,
-            }),
+          const grantResult = await client.grantPermission({
+            accessToken: auth.tokens.accessToken,
+            action: grantAction,
+            senderHandle,
+            capability: capability || undefined,
+            notificationId: notification.id,
           });
-
-          const grantResult = (await grantResponse.json()) as { message?: string; granted?: boolean };
           const humanSummary = grantResult.message ?? `Permission ${grantAction.replace(/_/g, " ")} for @${senderHandle}.`;
 
           const pendingCompletion: PendingBridgeCompletion = {

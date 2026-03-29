@@ -862,6 +862,32 @@ export class VinstaClient {
       },
     );
   }
+
+  async grantPermission(params: {
+    accessToken: string;
+    action: string;
+    senderHandle: string;
+    capability?: string;
+    notificationId?: string;
+  }) {
+    return fetchJson<{ message?: string; granted?: boolean }>(
+      this.fetchImpl,
+      this.buildUrl("/api/permissions/grant"),
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${params.accessToken}`,
+        },
+        body: JSON.stringify({
+          action: params.action,
+          senderHandle: params.senderHandle,
+          capability: params.capability || undefined,
+          notificationId: params.notificationId,
+        }),
+      },
+    );
+  }
 }
 
 export function persistableOauthState(tokens: VinstaOAuthTokenSet) {
