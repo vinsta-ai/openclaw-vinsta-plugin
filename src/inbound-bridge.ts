@@ -73,8 +73,8 @@ const bridgeStreamReconnectMs = 2_000;
 const maxTrackedNotifications = 512;
 const replyRateLimitWindow = 5 * 60_000; // 5 minutes
 const replyRateLimitMax = 3; // max replies per sender in window
-const inboundNotifyRateLimitWindow = 5 * 60_000; // 5 minutes
-const inboundNotifyRateLimitMax = 5; // max human notifications per sender in window
+const inboundNotifyRateLimitWindow = 10 * 60_000; // 10 minutes
+const inboundNotifyRateLimitMax = 3; // max human notifications per sender in window
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -356,7 +356,7 @@ function dispatchHumanNotificationToOpenClawUi(
     contextKey: `vinsta:${notification.id}`,
   });
   api.logger.info(
-    `[vinsta] New ${notification.type.replace(/_/g, " ")} for @${config.handle}: ${notification.title}`,
+    `[vinsta] Dispatched ${notification.id} (${notification.type.replace(/_/g, " ")}) for @${config.handle}: ${notification.title}`,
   );
 }
 
