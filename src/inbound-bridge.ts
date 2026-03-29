@@ -73,6 +73,8 @@ const bridgeStreamReconnectMs = 2_000;
 const maxTrackedNotifications = 512;
 const replyRateLimitWindow = 5 * 60_000; // 5 minutes
 const replyRateLimitMax = 3; // max replies per sender in window
+const inboundNotifyRateLimitWindow = 5 * 60_000; // 5 minutes
+const inboundNotifyRateLimitMax = 5; // max human notifications per sender in window
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -234,25 +236,27 @@ function shouldDeferBridgeRetry(retryDelays: Map<string, number>, notificationId
   return true;
 }
 
-function isReplyRateLimited(
-  replyTimestamps: Map<string, number[]>,
-  senderHandle: string,
+function isRateLimited(
+  timestamps: Map<string, number[]>,
+  key: string,
+  windowMs: number,
+  max: number,
 ) {
   const now = Date.now();
-  const timestamps = replyTimestamps.get(senderHandle);
-  if (!timestamps) return false;
-  const recent = timestamps.filter((t) => t > now - replyRateLimitWindow);
-  replyTimestamps.set(senderHandle, recent);
-  return recent.length >= replyRateLimitMax;
+  const entries = timestamps.get(key);
+  if (!entries) return false;
+  const recent = entries.filter((t) => t > now - windowMs);
+  timestamps.set(key, recent);
+  return recent.length >= max;
 }
 
-function recordReply(
-  replyTimestamps: Map<string, number[]>,
-  senderHandle: string,
+function recordTimestamp(
+  timestamps: Map<string, number[]>,
+  key: string,
 ) {
-  const timestamps = replyTimestamps.get(senderHandle) ?? [];
-  timestamps.push(Date.now());
-  replyTimestamps.set(senderHandle, timestamps);
+  const entries = timestamps.get(key) ?? [];
+  entries.push(Date.now());
+  timestamps.set(key, entries);
 }
 
 function buildVinstaThreadsUrl(config: ReturnType<typeof resolveVinstaPluginConfig>) {
@@ -952,7 +956,7 @@ async function processBridgeOnce(
       }
       // ── Per-sender reply rate limiter (prevents agent ping-pong loops) ──
       const sender = parseSenderHandle(notification);
-      if (action.reply && sender && isReplyRateLimited(senderReplyTimestamps, sender)) {
+      if (action.reply && sender && isRateLimited(senderReplyTimestamps, sender, replyRateLimitWindow, replyRateLimitMax)) {
         api.logger.info(
           `[vinsta] Rate-limited reply to @${sender} for ${notification.id} (>${replyRateLimitMax} replies in ${replyRateLimitWindow / 60_000}m)`,
         );
@@ -962,7 +966,7 @@ async function processBridgeOnce(
         }
       }
       if (action.reply && sender) {
-        recordReply(senderReplyTimestamps, sender);
+        recordTimestamp(senderReplyTimestamps, sender);
       }
 
       const finalOwnerSummary =
@@ -996,7 +1000,15 @@ async function processBridgeOnce(
           archive: pendingCompletion.archive,
         });
         if (pendingCompletion.humanNotification) {
-          await dedupDispatchHumanNotification(api, config, pendingCompletion.humanNotification, dispatchedNotificationIds);
+          const completionSender = parseSenderHandle(notification);
+          if (completionSender && isRateLimited(senderNotifyTimestamps, completionSender, inboundNotifyRateLimitWindow, inboundNotifyRateLimitMax)) {
+            api.logger.info(
+              `[vinsta] Rate-limited bridge notification from @${completionSender} for ${notification.id}`,
+            );
+          } else {
+            if (completionSender) recordTimestamp(senderNotifyTimestamps, completionSender);
+            await dedupDispatchHumanNotification(api, config, pendingCompletion.humanNotification, dispatchedNotificationIds);
+          }
         }
       } catch (error) {
         pendingCompletions.set(notification.id, pendingCompletion);
@@ -1038,6 +1050,7 @@ export function createVinstaInboundBridge(api: OpenClawPluginApi) {
   const dispatchedNotificationIds = new Set<string>();
   const failedBridgeNotificationIds = new Map<string, number>();
   const senderReplyTimestamps = new Map<string, number[]>();
+  const senderNotifyTimestamps = new Map<string, number[]>();
   let lastDispatchedUpdateVersion: string | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let streamAbortController: AbortController | null = null;
@@ -1084,6 +1097,28 @@ export function createVinstaInboundBridge(api: OpenClawPluginApi) {
 
       if (handledSilentlyByBridge) {
         continue;
+      }
+
+      // ── Per-sender inbound notification rate limiter ──
+      const sender = parseSenderHandle(notification);
+      if (sender && isRateLimited(senderNotifyTimestamps, sender, inboundNotifyRateLimitWindow, inboundNotifyRateLimitMax)) {
+        api.logger.info(
+          `[vinsta] Rate-limited inbound notification from @${sender} for ${notification.id} (>${inboundNotifyRateLimitMax} in ${inboundNotifyRateLimitWindow / 60_000}m)`,
+        );
+        // Still mark as read so it doesn't pile up, but don't notify the human
+        if (ctx && !notification.readAt) {
+          try {
+            await ctx.client.updateNotification({
+              notificationId: notification.id,
+              action: "read",
+              accessToken: ctx.accessToken,
+            });
+          } catch {}
+        }
+        continue;
+      }
+      if (sender) {
+        recordTimestamp(senderNotifyTimestamps, sender);
       }
 
       // Cross-instance dedup: if another instance already marked the notification read,
