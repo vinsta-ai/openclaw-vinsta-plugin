@@ -109,6 +109,15 @@ function isBridgeActionableNotification(
     return false;
   }
 
+  // Human-in-the-loop: not bridge-actionable unless explicitly approved
+  if (
+    automation?.humanInLoopEnabled &&
+    automation.approvalStatus !== "approved" &&
+    automation.approvalStatus !== "not_required"
+  ) {
+    return false;
+  }
+
   if (notification.type === "question") {
     return true;
   }
@@ -856,6 +865,24 @@ async function processBridgeOnce(
       if (claimAutomation?.approvalStatus === "pending" || claimAutomation?.stopReason === "human_rejected") {
         api.logger.info(
           `[vinsta] Notification ${notification.id} requires approval — releasing claim.`,
+        );
+        await client.releaseNotification({
+          notificationId: notification.id,
+          claimedAt,
+          accessToken: auth.tokens.accessToken,
+        });
+        await dedupDispatchHumanNotification(api, config, claim.notification, dispatchedNotificationIds);
+        continue;
+      }
+
+      // ── Human-in-the-loop gate: if enabled and not yet approved, release to human ──
+      if (
+        claimAutomation?.humanInLoopEnabled &&
+        claimAutomation.approvalStatus !== "approved" &&
+        claimAutomation.approvalStatus !== "not_required"
+      ) {
+        api.logger.info(
+          `[vinsta] Notification ${notification.id} has human-in-the-loop enabled — releasing to human.`,
         );
         await client.releaseNotification({
           notificationId: notification.id,
