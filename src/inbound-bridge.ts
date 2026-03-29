@@ -416,31 +416,36 @@ async function dispatchHumanNotification(
   notification: VinstaNotification,
   options?: { externalOnly?: boolean; uiOnly?: boolean },
 ) {
-  const sanitized = maybeSanitizeHumanNotificationForDelivery(
-    notification,
-    config.bridgeContentGuardEnabled,
-    config.bridgeContentGuardCustomOutboundPatterns.length > 0
-      ? config.bridgeContentGuardCustomOutboundPatterns
-      : undefined,
-  );
-  const safeNotification = sanitized.notification as VinstaNotification;
-
-  if (sanitized.redacted) {
-    api.logger.info(
-      `[vinsta] Content guard redacted owner summary for ${notification.id}: ${
-        sanitized.reason ?? "matched an outbound guard pattern"
-      }`,
-    );
-  }
-
-  // Surface in the OpenClaw terminal UI so every instance sees the notification
+  // The OpenClaw UI always gets the unredacted notification — the owner
+  // should see the full content of their own notifications.
   if (!options?.externalOnly) {
-    dispatchHumanNotificationToOpenClawUi(api, config, safeNotification);
+    dispatchHumanNotificationToOpenClawUi(api, config, notification);
   }
 
-  // Deliver via external channel (iMessage, Telegram, Slack, etc.)
+  // External channels (iMessage, Telegram, etc.) get a content-guarded
+  // version to avoid leaking secrets over less-secure transports.
   if (!options?.uiOnly) {
-    await dispatchHumanNotificationToExternalChannel(api, config, safeNotification);
+    const sanitized = maybeSanitizeHumanNotificationForDelivery(
+      notification,
+      config.bridgeContentGuardEnabled,
+      config.bridgeContentGuardCustomOutboundPatterns.length > 0
+        ? config.bridgeContentGuardCustomOutboundPatterns
+        : undefined,
+    );
+
+    if (sanitized.redacted) {
+      api.logger.info(
+        `[vinsta] Content guard redacted external notification for ${notification.id}: ${
+          sanitized.reason ?? "matched an outbound guard pattern"
+        }`,
+      );
+    }
+
+    await dispatchHumanNotificationToExternalChannel(
+      api,
+      config,
+      sanitized.notification as VinstaNotification,
+    );
   }
 }
 
