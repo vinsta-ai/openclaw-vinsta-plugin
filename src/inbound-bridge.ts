@@ -603,6 +603,7 @@ async function dispatchHumanNotification(
   api: OpenClawPluginApi,
   config: ReturnType<typeof resolveVinstaPluginConfig>,
   notification: VinstaNotification,
+  options?: { externalOnly?: boolean; uiOnly?: boolean },
 ) {
   const sanitized = maybeSanitizeHumanNotificationForDelivery(
     notification,
@@ -621,11 +622,15 @@ async function dispatchHumanNotification(
     );
   }
 
-  // Always surface in the OpenClaw terminal UI so every instance sees the notification
-  dispatchHumanNotificationToOpenClawUi(api, config, safeNotification);
+  // Surface in the OpenClaw terminal UI so every instance sees the notification
+  if (!options?.externalOnly) {
+    dispatchHumanNotificationToOpenClawUi(api, config, safeNotification);
+  }
 
-  // Also try to deliver via external channel (iMessage, Telegram, Slack, etc.)
-  await dispatchHumanNotificationToExternalChannel(api, config, safeNotification);
+  // Deliver via external channel (iMessage, Telegram, Slack, etc.)
+  if (!options?.uiOnly) {
+    await dispatchHumanNotificationToExternalChannel(api, config, safeNotification);
+  }
 }
 
 const noReplySignals = new Set([
@@ -723,6 +728,7 @@ async function dedupDispatchHumanNotification(
   config: ReturnType<typeof resolveVinstaPluginConfig>,
   notification: VinstaNotification,
   dispatchedIds: Set<string>,
+  options?: { externalOnly?: boolean; uiOnly?: boolean },
 ) {
   if (dispatchedIds.has(notification.id)) {
     return;
@@ -733,7 +739,7 @@ async function dedupDispatchHumanNotification(
     if (!oldest) break;
     dispatchedIds.delete(oldest);
   }
-  await dispatchHumanNotification(api, config, notification);
+  await dispatchHumanNotification(api, config, notification, options);
 }
 
 async function processBridgeOnce(
@@ -745,6 +751,7 @@ async function processBridgeOnce(
   observeNotifications?: (
     notifications: VinstaNotification[],
     config: ReturnType<typeof resolveVinstaPluginConfig>,
+    ctx?: { client: VinstaClient; accessToken: string },
   ) => Promise<number> | number,
 ): Promise<BridgeStatus> {
   const current = readVinstaPluginEntry(api.runtime.config.loadConfig());
@@ -780,7 +787,7 @@ async function processBridgeOnce(
     handle: config.handle,
   });
   const notified = observeNotifications
-    ? await observeNotifications(payload.notifications, config)
+    ? await observeNotifications(payload.notifications, config, { client, accessToken: auth.tokens.accessToken })
     : 0;
 
   const surfaceBridgeFailure = async (notification: VinstaNotification, claimedAt: string) => {
@@ -1202,6 +1209,7 @@ export function createVinstaInboundBridge(api: OpenClawPluginApi) {
   const observeNotifications = async (
     notifications: VinstaNotification[],
     config: ReturnType<typeof resolveVinstaPluginConfig>,
+    ctx?: { client: VinstaClient; accessToken: string },
   ) => {
     const sorted = [...notifications].sort(
       (left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt),
@@ -1230,7 +1238,26 @@ export function createVinstaInboundBridge(api: OpenClawPluginApi) {
       if (handledSilentlyByBridge) {
         continue;
       }
-      await dedupDispatchHumanNotification(api, config, notification, dispatchedNotificationIds);
+
+      // Cross-instance dedup: if another instance already marked the notification read,
+      // only show in the local OpenClaw UI — skip the external channel to avoid duplicates.
+      if (notification.readAt) {
+        await dedupDispatchHumanNotification(api, config, notification, dispatchedNotificationIds, { uiOnly: true });
+      } else {
+        await dedupDispatchHumanNotification(api, config, notification, dispatchedNotificationIds);
+        // Mark as read so other instances know external dispatch was handled
+        if (ctx) {
+          try {
+            await ctx.client.updateNotification({
+              notificationId: notification.id,
+              action: "read",
+              accessToken: ctx.accessToken,
+            });
+          } catch {
+            // Best-effort — don't fail the cycle if this fails
+          }
+        }
+      }
     }
 
     return freshNotifications.length;
