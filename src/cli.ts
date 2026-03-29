@@ -13,6 +13,7 @@ import {
 import { parseAuthorizationCallbackUrl } from "./oauth-callback.js";
 import { persistableOauthState, VinstaClient } from "./vinsta-client.js";
 import { checkForUpdate, formatUpdateNotice, performAutoUpdate } from "./update-check.js";
+import { discoverNotifyTargetsFromOpenClawConfig } from "./inbound-bridge-helpers.js";
 
 type BridgeController = {
   runOnce: () => Promise<unknown>;
@@ -285,6 +286,93 @@ export function registerVinstaCli(params: {
         printJson(buildVinstaStatus(resolveVinstaPluginConfig(updated, process.env)));
       },
     );
+
+  root
+    .command("setup")
+    .description("Interactive setup: choose a notification channel for Vinsta alerts")
+    .action(async () => {
+      const config = mergedPluginConfig(api);
+      const openclawConfig = api.runtime.config.loadConfig();
+      const discovered = discoverNotifyTargetsFromOpenClawConfig(openclawConfig);
+
+      const readline = await import("node:readline");
+      const rl = readline.createInterface({ input: process.stdin, output: process.stderr });
+      const ask = (prompt: string) =>
+        new Promise<string>((resolve) => {
+          rl.question(prompt, (ans) => resolve(ans.trim()));
+        });
+
+      process.stderr.write("\n=== Vinsta Notification Setup ===\n\n");
+
+      if (!config.handle) {
+        process.stderr.write("No Vinsta handle configured. Run `openclaw vinsta configure --handle <your-handle>` first.\n");
+        rl.close();
+        return;
+      }
+
+      process.stderr.write(`Vinsta handle: @${config.handle}\n`);
+      process.stderr.write(`Bridge enabled: ${config.bridgeEnabled}\n\n`);
+
+      // Show available channels
+      const choices: Array<{ label: string; target: VinstaBridgeNotifyTarget }> = [];
+
+      for (const target of discovered) {
+        const label = target.accountId
+          ? `${target.channel} (account: ${target.accountId}, to: ${target.to})`
+          : `${target.channel} (to: ${target.to})`;
+        choices.push({ label, target });
+      }
+
+      if (choices.length === 0) {
+        process.stderr.write(
+          "No messaging channels discovered in your OpenClaw config.\n" +
+          "Configure a channel (e.g., iMessage, Telegram, Slack) in your OpenClaw settings first,\n" +
+          "or set a target manually:\n\n" +
+          '  openclaw vinsta configure --bridge-notify-target "channel=imessage,to=+1234567890"\n\n',
+        );
+        rl.close();
+        return;
+      }
+
+      process.stderr.write("Available notification channels:\n\n");
+      choices.forEach((choice, index) => {
+        process.stderr.write(`  ${index + 1}. ${choice.label}\n`);
+      });
+      process.stderr.write(`  ${choices.length + 1}. OpenClaw terminal only (no external notifications)\n`);
+      process.stderr.write("\n");
+
+      const answer = await ask(`Choose a channel for Vinsta notifications [1-${choices.length + 1}]: `);
+      const selection = Number.parseInt(answer, 10);
+
+      if (selection >= 1 && selection <= choices.length) {
+        const chosen = choices[selection - 1]!;
+
+        await updateVinstaPluginConfig(api.runtime, (current) => ({
+          ...current,
+          bridgeEnabled: true,
+          bridgeNotifyTargets: [chosen.target],
+        }));
+
+        process.stderr.write(`\nVinsta notifications will be sent to: ${chosen.label}\n`);
+        process.stderr.write("Bridge has been enabled.\n");
+      } else if (selection === choices.length + 1) {
+        await updateVinstaPluginConfig(api.runtime, (current) => ({
+          ...current,
+          bridgeEnabled: true,
+          bridgeNotifyTargets: [],
+        }));
+
+        process.stderr.write("\nVinsta notifications will appear in the OpenClaw terminal only.\n");
+        process.stderr.write("Bridge has been enabled.\n");
+      } else {
+        process.stderr.write("\nInvalid selection. No changes made.\n");
+        rl.close();
+        return;
+      }
+
+      rl.close();
+      printJson(buildVinstaStatus(mergedPluginConfig(api)));
+    });
 
   root
     .command("login")

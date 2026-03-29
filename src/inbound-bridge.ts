@@ -524,6 +524,81 @@ function dispatchHumanNotificationToOpenClawUi(
   );
 }
 
+async function dispatchHumanNotificationToExternalChannel(
+  api: OpenClawPluginApi,
+  config: ReturnType<typeof resolveVinstaPluginConfig>,
+  notification: VinstaNotification,
+) {
+  // Step 1: Explicit bridgeNotifyTargets
+  if (await dispatchHumanNotificationViaOpenClaw(api, config, notification)) {
+    return true;
+  }
+
+  // Step 2: Saved origin channel from last tool invocation
+  if (
+    config.bridgeNotifyTargets.length === 0 &&
+    config.lastNotifyChannel &&
+    config.lastNotifyTarget
+  ) {
+    const originTarget = [
+      {
+        channel: config.lastNotifyChannel,
+        to: config.lastNotifyTarget,
+        accountId: config.lastNotifyAccountId,
+      },
+    ];
+    const originConfig = { ...config, bridgeNotifyTargets: originTarget };
+
+    if (await dispatchHumanNotificationViaOpenClaw(api, originConfig, notification)) {
+      return true;
+    }
+  }
+
+  // Step 3: Auto-discover from OpenClaw channel config
+  if (config.bridgeNotifyTargets.length === 0) {
+    const discovered = discoverNotifyTargetsFromOpenClawConfig(
+      api.runtime.config.loadConfig(),
+    );
+
+    if (discovered.length > 0) {
+      const autoConfig = { ...config, bridgeNotifyTargets: discovered };
+
+      if (await dispatchHumanNotificationViaOpenClaw(api, autoConfig, notification)) {
+        return true;
+      }
+    }
+  }
+
+  // Step 4: Legacy bridgeNotifyCommand
+  if (config.bridgeNotifyCommand) {
+    try {
+      const result = await runBridgeNotifyCommand(
+        config.bridgeNotifyCommand,
+        notification,
+        config.handle!,
+      );
+
+      if (result.exitCode !== 0) {
+        api.logger.error(
+          `[vinsta] Notification command failed for ${notification.id} with exit ${result.exitCode}${
+            result.stderr ? `: ${result.stderr}` : ""
+          }`,
+        );
+      } else {
+        return true;
+      }
+    } catch (error) {
+      api.logger.error(
+        `[vinsta] Failed to notify for ${notification.id}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+
+  return false;
+}
+
 async function dispatchHumanNotification(
   api: OpenClawPluginApi,
   config: ReturnType<typeof resolveVinstaPluginConfig>,
@@ -546,74 +621,11 @@ async function dispatchHumanNotification(
     );
   }
 
-  // Step 1: Explicit bridgeNotifyTargets
-  if (await dispatchHumanNotificationViaOpenClaw(api, config, safeNotification)) {
-    return;
-  }
-
-  // Step 2: Saved origin channel from last tool invocation
-  if (
-    config.bridgeNotifyTargets.length === 0 &&
-    config.lastNotifyChannel &&
-    config.lastNotifyTarget
-  ) {
-    const originTarget = [
-      {
-        channel: config.lastNotifyChannel,
-        to: config.lastNotifyTarget,
-        accountId: config.lastNotifyAccountId,
-      },
-    ];
-    const originConfig = { ...config, bridgeNotifyTargets: originTarget };
-
-    if (await dispatchHumanNotificationViaOpenClaw(api, originConfig, safeNotification)) {
-      return;
-    }
-  }
-
-  // Step 3: Auto-discover from OpenClaw channel config
-  if (config.bridgeNotifyTargets.length === 0) {
-    const discovered = discoverNotifyTargetsFromOpenClawConfig(
-      api.runtime.config.loadConfig(),
-    );
-
-    if (discovered.length > 0) {
-      const autoConfig = { ...config, bridgeNotifyTargets: discovered };
-
-      if (await dispatchHumanNotificationViaOpenClaw(api, autoConfig, safeNotification)) {
-        return;
-      }
-    }
-  }
-
-  // Step 4: Legacy bridgeNotifyCommand
-  if (config.bridgeNotifyCommand) {
-    try {
-      const result = await runBridgeNotifyCommand(
-        config.bridgeNotifyCommand,
-        safeNotification,
-        config.handle!,
-      );
-
-      if (result.exitCode !== 0) {
-        api.logger.error(
-          `[vinsta] Notification command failed for ${notification.id} with exit ${result.exitCode}${
-            result.stderr ? `: ${result.stderr}` : ""
-          }`,
-        );
-      } else {
-        return;
-      }
-    } catch (error) {
-      api.logger.error(
-        `[vinsta] Failed to notify for ${notification.id}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-    }
-  }
-
+  // Always surface in the OpenClaw terminal UI so every instance sees the notification
   dispatchHumanNotificationToOpenClawUi(api, config, safeNotification);
+
+  // Also try to deliver via external channel (iMessage, Telegram, Slack, etc.)
+  await dispatchHumanNotificationToExternalChannel(api, config, safeNotification);
 }
 
 const noReplySignals = new Set([
