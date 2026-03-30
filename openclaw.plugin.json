@@ -65,6 +65,11 @@
       "help": "When enabled, the bridge sends the helper's reply back over Vinsta automatically. Final human summaries still use the configured human-notification path: native notify targets first, then the legacy notify command, then OpenClaw's main session/UI.",
       "advanced": true
     },
+    "bridgeReplyPolicy": {
+      "label": "Bridge Reply Policy",
+      "help": "Control which bridge-generated replies should be sent automatically. Defaults to actionable-only.",
+      "advanced": true
+    },
     "bridgeArchiveOnSuccess": {
       "label": "Archive Bridge Success",
       "advanced": true
@@ -91,7 +96,7 @@
     },
     "autoUpdate": {
       "label": "Auto-Update Plugin",
-      "help": "Automatically update @openclaw/vinsta when a new version is available. Defaults to true. Set to false for manual control.",
+      "help": "Automatically update @openclaw/vinsta when a new version is available for npm installs. Archive or path installs surface update notices only. Defaults to true.",
       "advanced": true
     },
     "lastUpdateCheckAt": {
@@ -187,6 +192,10 @@
       "bridgeAutoReply": {
         "type": "boolean"
       },
+      "bridgeReplyPolicy": {
+        "type": "string",
+        "enum": ["actionable-only", "all", "none"]
+      },
       "bridgeArchiveOnSuccess": {
         "type": "boolean"
       },
@@ -212,6 +221,15 @@
         "type": "boolean"
       },
       "lastUpdateCheckAt": {
+        "type": "string"
+      },
+      "lastNotifyChannel": {
+        "type": "string"
+      },
+      "lastNotifyTarget": {
+        "type": "string"
+      },
+      "lastNotifyAccountId": {
         "type": "string"
       },
       "oauth": {

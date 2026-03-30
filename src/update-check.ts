@@ -1,4 +1,6 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import type { ResolvedVinstaPluginConfig } from "./config.js";
 import { updateVinstaPluginConfig } from "./config.js";
 
@@ -58,16 +60,27 @@ export function formatUpdateNotice(latest: string, current: string): string {
 
 function getCurrentVersion(): string {
   try {
-    // Use createRequire to load the plugin's own package.json at runtime.
-    // This avoids TypeScript "resolveJsonModule" issues and works regardless
-    // of the bundler since the file is always on disk next to the built output.
-    const { createRequire } = require("node:module") as typeof import("node:module");
-    const localRequire = createRequire(__filename);
-    const pkg = localRequire("../../package.json") as { version: string };
-    return pkg.version;
+    const packageJsonPath = fileURLToPath(new URL("../package.json", import.meta.url));
+    const pkg = JSON.parse(readFileSync(packageJsonPath, "utf8")) as { version?: string };
+    return typeof pkg.version === "string" && pkg.version.trim() ? pkg.version.trim() : "0.0.0";
   } catch {
     return "0.0.0";
   }
+}
+
+function readInstallSource(api: OpenClawPluginApi) {
+  const config = api.runtime.config.loadConfig() as {
+    plugins?: {
+      installs?: {
+        vinsta?: {
+          source?: string;
+        };
+      };
+    };
+  };
+
+  const source = config.plugins?.installs?.vinsta?.source;
+  return typeof source === "string" ? source : null;
 }
 
 export async function checkForUpdate(opts?: {
@@ -114,6 +127,18 @@ export async function checkForUpdate(opts?: {
 export async function performAutoUpdate(
   api: OpenClawPluginApi,
 ): Promise<AutoUpdateResult> {
+  const installSource = readInstallSource(api);
+
+  if (installSource !== "npm") {
+    return {
+      success: false,
+      message:
+        `Auto-update is only supported for npm-installed plugins. ` +
+        `Current Vinsta install source: ${installSource ?? "unknown"}. ` +
+        `Reinstall from the latest hosted tarball instead.`,
+    };
+  }
+
   try {
     const result = await api.runtime.system.runCommandWithTimeout(
       ["openclaw", "plugins", "update", "vinsta"],

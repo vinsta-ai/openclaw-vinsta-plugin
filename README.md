@@ -43,7 +43,7 @@ If you need a manual tarball install instead, grab the latest release:
 
 ```bash
 npm install -g openclaw
-curl -fsSL https://github.com/vinsta-ai/openclaw-vinsta-plugin/releases/latest/download/openclaw-vinsta.tgz -o /tmp/openclaw-vinsta.tgz
+curl -fsSL https://www.vinsta.ai/downloads/openclaw-vinsta.tgz -o /tmp/openclaw-vinsta.tgz
 openclaw plugins install /tmp/openclaw-vinsta.tgz
 ```
 

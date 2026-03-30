@@ -5,6 +5,7 @@ import {
   isNewerVersion,
   formatUpdateNotice,
   checkForUpdate,
+  performAutoUpdate,
   _resetForTesting,
 } from "./update-check.js";
 
@@ -118,6 +119,7 @@ describe("checkForUpdate", () => {
     assert.notStrictEqual(result, null);
     assert.strictEqual(result!.available, true);
     assert.strictEqual(result!.latestVersion, "2099.1.1-1");
+    assert.strictEqual(result!.currentVersion, "2026.3.29-4");
   });
 
   it("uses cache on subsequent calls", async () => {
@@ -158,5 +160,65 @@ describe("checkForUpdate", () => {
       } as Response);
     const result = await checkForUpdate({ force: true });
     assert.strictEqual(result, null);
+  });
+});
+
+describe("performAutoUpdate", () => {
+  it("refuses auto-update for archive installs", async () => {
+    const api = {
+      runtime: {
+        config: {
+          loadConfig: () => ({
+            plugins: {
+              installs: {
+                vinsta: {
+                  source: "archive",
+                },
+              },
+            },
+          }),
+        },
+        system: {
+          runCommandWithTimeout: async () => {
+            throw new Error("should not run");
+          },
+        },
+      },
+    } as const;
+
+    const result = await performAutoUpdate(api as never);
+    assert.strictEqual(result.success, false);
+    assert.match(result.message, /only supported for npm-installed plugins/i);
+    assert.match(result.message, /archive/i);
+  });
+
+  it("runs openclaw plugins update for npm installs", async () => {
+    const calls: Array<{ args: string[]; timeoutMs: number }> = [];
+    const api = {
+      runtime: {
+        config: {
+          loadConfig: () => ({
+            plugins: {
+              installs: {
+                vinsta: {
+                  source: "npm",
+                },
+              },
+            },
+          }),
+        },
+        system: {
+          runCommandWithTimeout: async (args: string[], options: { timeoutMs: number }) => {
+            calls.push({ args, timeoutMs: options.timeoutMs });
+            return { exitCode: 0, stdout: "ok", stderr: "" };
+          },
+        },
+      },
+    } as const;
+
+    const result = await performAutoUpdate(api as never);
+    assert.strictEqual(result.success, true);
+    assert.strictEqual(calls.length, 1);
+    assert.deepStrictEqual(calls[0]?.args, ["openclaw", "plugins", "update", "vinsta"]);
   });
 });
