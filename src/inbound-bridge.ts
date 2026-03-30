@@ -8,6 +8,7 @@ import {
   runBridgeCommand,
   runBridgeNotifyCommand,
   runOpenClawNativeNotifyTarget,
+  showDesktopNotification,
 } from "./spawn-runners.js";
 
 /** Resolves the main session key from the OpenClaw config.
@@ -430,6 +431,14 @@ function dispatchHumanNotificationToOpenClawUi(
     sessionKey,
     contextKey: `vinsta:${notification.id}`,
   });
+
+  // Show a native OS notification so the user sees it immediately,
+  // even if they're not actively looking at the OpenClaw terminal.
+  const sender = parseSenderHandle(notification);
+  const senderLabel = sender ? `@${sender}` : "Vinsta";
+  const preview = notification.body.trim().slice(0, 150) || notification.title.trim();
+  showDesktopNotification(senderLabel, preview);
+
   api.logger.info(
     `[vinsta] Dispatched ${notification.id} (${notification.type.replace(/_/g, " ")}) for @${config.handle}: ${notification.title}`,
   );

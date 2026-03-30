@@ -216,3 +216,25 @@ export async function runOpenClawNativeNotifyTarget(input: {
     });
   });
 }
+
+export function showDesktopNotification(title: string, body: string) {
+  try {
+    const platform = process.platform;
+    if (platform === "darwin") {
+      const child = spawn("osascript", [
+        "-e",
+        `display notification "${body.replace(/"/g, '\\"').slice(0, 200)}" with title "Vinsta" subtitle "${title.replace(/"/g, '\\"').slice(0, 100)}" sound name "Glass"`,
+      ], { stdio: "ignore", detached: true });
+      child.unref();
+    } else if (platform === "linux") {
+      const child = spawn("notify-send", [
+        "--app-name=Vinsta",
+        title.slice(0, 100),
+        body.slice(0, 200),
+      ], { stdio: "ignore", detached: true });
+      child.unref();
+    }
+  } catch {
+    // Desktop notification is best-effort — don't block bridge on failure
+  }
+}
