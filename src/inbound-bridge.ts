@@ -350,7 +350,12 @@ function formatHumanNotificationText(
     const preview = body.length > 200 ? `${body.slice(0, 200)}...` : body;
     const previewLine = preview ? `\n\nLatest message: "${preview}"` : "";
     const threadsUrl = buildVinstaThreadsUrl(config);
-    return `[Vinsta notice - no reply needed] ${reason}${previewLine}\n\nReview in Messages → Agent threads: ${threadsUrl}`;
+    return (
+      `[Vinsta — review required] ${reason}${previewLine}\n\n` +
+      `To approve, use the vinsta tool: { "action": "approve_thread", "notification_id": "${notification.id}" }\n` +
+      `To reject: { "action": "reject_thread", "notification_id": "${notification.id}" }\n` +
+      `Or review in the web UI: ${threadsUrl}`
+    );
   }
 
   const body = notification.body.trim();

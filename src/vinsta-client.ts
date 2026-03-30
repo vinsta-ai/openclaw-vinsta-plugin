@@ -323,9 +323,22 @@ async function fetchJson<T>(fetchImpl: FetchImpl, input: string, init?: RequestI
     let detail = "";
     try {
       const body = await response.text();
-      if (body) detail = `: ${body.length > 300 ? body.slice(0, 300) + "…" : body}`;
+      if (body) {
+        // Try to extract a human-readable message from JSON-RPC error responses
+        try {
+          const parsed = JSON.parse(body);
+          const rpcMessage = parsed?.error?.message ?? parsed?.message;
+          if (typeof rpcMessage === "string" && rpcMessage) {
+            detail = `: ${rpcMessage}`;
+          } else {
+            detail = `: ${body.length > 300 ? body.slice(0, 300) + "…" : body}`;
+          }
+        } catch {
+          detail = `: ${body.length > 300 ? body.slice(0, 300) + "…" : body}`;
+        }
+      }
     } catch {}
-    throw new Error(`Request failed (${response.status}) for ${input}${detail}`);
+    throw new Error(`Request failed (${response.status})${detail}`);
   }
 
   return response.json() as Promise<T>;
