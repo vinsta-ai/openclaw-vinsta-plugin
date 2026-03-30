@@ -440,16 +440,22 @@ async function dispatchHumanNotificationToExternalChannel(
 }
 
 async function dispatchHumanNotification(
-  _api: OpenClawPluginApi,
-  _config: ReturnType<typeof resolveVinstaPluginConfig>,
-  _notification: VinstaNotification,
-  _options?: { externalOnly?: boolean; uiOnly?: boolean },
+  api: OpenClawPluginApi,
+  config: ReturnType<typeof resolveVinstaPluginConfig>,
+  notification: VinstaNotification,
+  options?: { externalOnly?: boolean; uiOnly?: boolean },
 ) {
-  // Suppress all mirrored human notifications. The bridge command handles
-  // everything — notifying the owner via notifyHuman when it matters,
-  // and archiving silently otherwise. Mirroring every inbound event to
-  // the OpenClaw UI and external channels causes notification spam.
-  return;
+  // Dispatch to UI and/or external channels. Spam is prevented by:
+  // - archive-after-dispatch in observeNotifications (prevents re-delivery)
+  // - primedNotificationIds (prevents replaying old notifications on restart)
+  // - dedupDispatchHumanNotification (per-session dedup)
+  // - per-sender rate limiters (senderNotifyTimestamps)
+  if (!options?.externalOnly) {
+    dispatchHumanNotificationToOpenClawUi(api, config, notification);
+  }
+  if (!options?.uiOnly) {
+    await dispatchHumanNotificationToExternalChannel(api, config, notification);
+  }
 }
 
 const noReplySignals = new Set([
@@ -995,6 +1001,11 @@ async function processBridgeOnce(
         recordTimestamp(senderReplyTimestamps, sender);
       }
 
+      // If the agent set notifyHuman, or the notification body should be surfaced
+      // as a final summary, build a human notification for dispatch.
+      const notifySummary = action.notifyHuman
+        ?? (shouldUseNotifyBodyAsFinalSummary(notification, action) ? notification.body.trim() : undefined);
+
       const pendingCompletion: PendingBridgeCompletion = {
         notificationId: notification.id,
         claimedAt,
@@ -1002,8 +1013,14 @@ async function processBridgeOnce(
           config.bridgeAutoReply && action.reply
             ? action.reply
             : undefined,
-        archive: true,
-        humanNotification: undefined,
+        archive: action.archive !== false,
+        humanNotification: notifySummary
+          ? buildHumanSummaryNotification({
+              original: notification,
+              handle: config.handle,
+              summary: notifySummary,
+            })
+          : undefined,
       };
 
       try {
