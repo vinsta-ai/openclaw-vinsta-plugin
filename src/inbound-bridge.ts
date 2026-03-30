@@ -418,22 +418,24 @@ async function dispatchHumanNotificationViaOpenClaw(
   return delivered > 0;
 }
 
-function dispatchHumanNotificationToOpenClawUi(
+function dispatchHumanNotificationLocally(
   api: OpenClawPluginApi,
   config: ReturnType<typeof resolveVinstaPluginConfig>,
   notification: VinstaNotification,
 ) {
-  const cfg = api.runtime.config.loadConfig();
-  const sessionKey = resolveMainSessionKey(cfg);
   const text = formatHumanNotificationText(config, notification);
+  if (config.bridgeUiNotificationsEnabled) {
+    const cfg = api.runtime.config.loadConfig();
+    const sessionKey = resolveMainSessionKey(cfg);
 
-  api.runtime.system.enqueueSystemEvent(text, {
-    sessionKey,
-    contextKey: `vinsta:${notification.id}`,
-  });
+    api.runtime.system.enqueueSystemEvent(text, {
+      sessionKey,
+      contextKey: `vinsta:${notification.id}`,
+    });
+  }
 
   // Show a native OS notification so the user sees it immediately,
-  // even if they're not actively looking at the OpenClaw terminal.
+  // without forcing the alert back into OpenClaw's conversational session.
   const sender = parseSenderHandle(notification);
   const senderLabel = sender ? `@${sender}` : "Vinsta";
   const preview = notification.body.trim().slice(0, 150) || notification.title.trim();
@@ -531,7 +533,7 @@ async function dispatchHumanNotification(
   // - dedupDispatchHumanNotification (per-session dedup)
   // - per-sender rate limiters (senderNotifyTimestamps)
   if (!options?.externalOnly) {
-    dispatchHumanNotificationToOpenClawUi(api, config, notification);
+    dispatchHumanNotificationLocally(api, config, notification);
   }
   if (!options?.uiOnly) {
     await dispatchHumanNotificationToExternalChannel(api, config, notification);

@@ -47,13 +47,18 @@
     },
     "bridgeNotifyTargets": {
       "label": "Bridge Notify Targets",
-      "help": "Optional OpenClaw-native human alert routes. Each target uses a linked channel/account object like {\"channel\":\"telegram\",\"to\":\"123456789\"} or {\"channel\":\"whatsapp\",\"to\":\"+15555550123\"}. When unset, alerts still surface in OpenClaw's main session/UI.",
+      "help": "Optional OpenClaw-native human alert routes. Each target uses a linked channel/account object like {\"channel\":\"telegram\",\"to\":\"123456789\"} or {\"channel\":\"whatsapp\",\"to\":\"+15555550123\"}. When unset, the bridge falls back to a local desktop notification and keeps owner-facing summaries out of OpenClaw's main session/UI by default.",
       "advanced": true
     },
     "bridgeNotifyCommand": {
       "label": "Bridge Notify Command (Legacy)",
       "placeholder": "notify-send \"Vinsta\" \"$VINSTA_NOTIFICATION_TITLE\"",
       "help": "Optional legacy shell fallback run when a new Vinsta inbox event arrives. Prefer bridgeNotifyTargets so OpenClaw sends through linked native channels like Telegram or WhatsApp. If you mirror alerts into the same iMessage thread OpenClaw watches, use the shipped notify-imessage.sh helper so the text stays marked as a read-only notice.",
+      "advanced": true
+    },
+    "bridgeUiNotificationsEnabled": {
+      "label": "Bridge UI Notifications",
+      "help": "When enabled, owner-facing bridge summaries also appear in OpenClaw's main session/UI. Disabled by default to avoid self-notification loops when OpenClaw is already watching the same conversation surface.",
       "advanced": true
     },
     "bridgePollIntervalMs": {
@@ -185,6 +190,9 @@
       },
       "bridgeNotifyCommand": {
         "type": "string"
+      },
+      "bridgeUiNotificationsEnabled": {
+        "type": "boolean"
       },
       "bridgePollIntervalMs": {
         "type": "number"

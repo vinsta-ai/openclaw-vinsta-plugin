@@ -57,6 +57,11 @@ describe("Vinsta bridge notify targets", () => {
       },
     ]);
   });
+
+  it("keeps main-session bridge summaries disabled by default", () => {
+    const resolved = resolveVinstaPluginConfig({});
+    assert.equal(resolved.bridgeUiNotificationsEnabled, false);
+  });
 });
 
 describe("Vinsta content guard config", () => {
@@ -104,6 +109,7 @@ describe("Vinsta plugin manifest schema", () => {
 
     for (const key of [
       "bridgeReplyPolicy",
+      "bridgeUiNotificationsEnabled",
       "lastNotifyChannel",
       "lastNotifyTarget",
       "lastNotifyAccountId",

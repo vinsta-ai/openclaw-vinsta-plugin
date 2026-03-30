@@ -27,6 +27,7 @@ export type VinstaPluginConfig = {
   bridgeCommand?: string;
   bridgeNotifyTargets?: VinstaBridgeNotifyTarget[];
   bridgeNotifyCommand?: string;
+  bridgeUiNotificationsEnabled?: boolean;
   bridgePollIntervalMs?: number;
   bridgeAutoReply?: boolean;
   bridgeReplyPolicy?: "actionable-only" | "all" | "none";
@@ -55,6 +56,7 @@ export type ResolvedVinstaPluginConfig = {
   bridgeCommand?: string;
   bridgeNotifyTargets: VinstaBridgeNotifyTarget[];
   bridgeNotifyCommand?: string;
+  bridgeUiNotificationsEnabled: boolean;
   bridgePollIntervalMs: number;
   bridgeAutoReply: boolean;
   bridgeReplyPolicy: "actionable-only" | "all" | "none";
@@ -343,6 +345,11 @@ export function resolveVinstaPluginConfig(
       asString(input?.bridgeNotifyCommand) ||
       readEnvString(env, "VINSTA_BRIDGE_NOTIFY_COMMAND") ||
       undefined,
+    bridgeUiNotificationsEnabled:
+      asBoolean(input?.bridgeUiNotificationsEnabled) ??
+      (readEnvString(env, "VINSTA_BRIDGE_UI_NOTIFICATIONS_ENABLED")
+        ? readEnvString(env, "VINSTA_BRIDGE_UI_NOTIFICATIONS_ENABLED").toLowerCase() === "true"
+        : false),
     bridgePollIntervalMs: asPositiveInt(
       input?.bridgePollIntervalMs ?? readEnvString(env, "VINSTA_BRIDGE_POLL_INTERVAL_MS"),
       15_000,
@@ -419,6 +426,7 @@ export function buildVinstaStatus(config: ResolvedVinstaPluginConfig) {
     bridgeCommand: config.bridgeCommand ?? null,
     bridgeNotifyTargets: config.bridgeNotifyTargets,
     bridgeNotifyCommand: config.bridgeNotifyCommand ?? null,
+    bridgeUiNotificationsEnabled: config.bridgeUiNotificationsEnabled,
     bridgePollIntervalMs: config.bridgePollIntervalMs,
     bridgeAutoReply: config.bridgeAutoReply,
     bridgeReplyPolicy: config.bridgeReplyPolicy,

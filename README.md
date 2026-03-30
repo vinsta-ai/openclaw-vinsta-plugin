@@ -170,7 +170,11 @@ openclaw vinsta configure \
 
 Each target uses OpenClaw's real outbound channel adapters, so Telegram, WhatsApp, iMessage, Slack, and any other linked outbound-capable channel can receive the same Vinsta alert path.
 
-If you do not configure any notify target, Vinsta bridge events still surface inside OpenClaw's main session/UI as queued system events.
+If you do not configure any notify target, the bridge keeps owner-facing summaries out of OpenClaw's main session by default and only shows a local desktop notification. This avoids the common self-loop where OpenClaw interprets its own mirrored Vinsta update as a fresh prompt. If you explicitly want the older queued-system-event behavior, opt in with:
+
+```bash
+openclaw vinsta configure --bridge-ui-notifications
+```
 
 If a Vinsta agent thread has `Human in the loop` enabled, or if an automatic thread hits the review-turn cap, the bridge pauses and waits for approval in `Messages -> Agent threads` before it continues.
 
@@ -194,7 +198,7 @@ It prefixes the mirrored text with `[Vinsta notice - no reply needed]` so it is 
 - terminal `Reply from @someone` events fall back to a final owner update even if the helper does not emit a separate summary
 - the human only gets a mirrored notification when the bridge reaches a final owner-facing conclusion or the event is non-agent-facing
 
-If the same iMessage thread is also how you talk to OpenClaw, keep that guard prefix or use a different target thread. Otherwise your OpenClaw agent may interpret the mirrored notification as a fresh inbound user message and answer its own alert.
+If the same iMessage thread is also how you talk to OpenClaw, keep that guard prefix or use a different target thread. Otherwise your OpenClaw agent may interpret the mirrored notification as a fresh inbound user message and answer its own alert. The plugin now also keeps main-session UI summaries disabled by default for the same reason.
 
 The bridge passes the inbound payload through stdin (as JSON) and environment variables:
 

@@ -195,6 +195,16 @@ export function registerVinstaCli(params: {
       "--bridge-notify-command <command>",
       "Optional legacy shell fallback for new Vinsta inbox events; prefer --bridge-notify-target when possible",
     )
+    .option(
+      "--bridge-ui-notifications",
+      "Also surface owner-facing bridge summaries in OpenClaw's main session/UI",
+      false,
+    )
+    .option(
+      "--bridge-no-ui-notifications",
+      "Keep owner-facing bridge summaries out of OpenClaw's main session/UI",
+      false,
+    )
     .option("--clear-bridge-notify-targets", "Remove stored OpenClaw-native notify routes", false)
     .option("--bridge-poll-interval-ms <ms>", "Polling interval for the inbound Vinsta bridge")
     .option("--bridge-auto-reply", "Send command stdout back to the sender automatically")
@@ -221,6 +231,8 @@ export function registerVinstaCli(params: {
         bridgeCommand?: string;
         bridgeNotifyTarget?: string[];
         bridgeNotifyCommand?: string;
+        bridgeUiNotifications?: boolean;
+        bridgeNoUiNotifications?: boolean;
         clearBridgeNotifyTargets?: boolean;
         bridgePollIntervalMs?: string;
         bridgeAutoReply?: boolean;
@@ -271,6 +283,12 @@ export function registerVinstaCli(params: {
           }
           if (options.bridgeNotifyCommand) {
             next.bridgeNotifyCommand = options.bridgeNotifyCommand;
+          }
+          if (options.bridgeUiNotifications) {
+            next.bridgeUiNotificationsEnabled = true;
+          }
+          if (options.bridgeNoUiNotifications) {
+            next.bridgeUiNotificationsEnabled = false;
           }
           if (options.clearBridgeNotifyTargets) {
             next.bridgeNotifyTargets = [];
