@@ -45,6 +45,8 @@ import {
 } from "./inbound-bridge-helpers.js";
 import { maybeAutoUpdate, type MaybeAutoUpdateResult } from "./update-check.js";
 
+type MessageClass = "personal" | "actionable" | "technical";
+
 type BridgeAction = {
   reply?: string;
   notifyHuman?: string;
@@ -82,6 +84,61 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function asString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+// ── Lightweight inbound message classifier ──
+// Classifies messages structurally so the plugin can enforce policy
+// without relying on the agent's judgment alone.
+const personalPatterns = [
+  /\b(hi|hey|hello|hola|sup|yo)\b/i,
+  /\b(love|miss|luv|amor|babe|baby)\b/i,
+  /\b(good\s*(morning|night|evening|afternoon))\b/i,
+  /\b(how\s*are\s*you|how('s| is)\s*it\s*going|what('s| is)\s*up)\b/i,
+  /\b(thanks?|thank\s*you|thx|ty)\b/i,
+  /\b(congrat|well\s*done|nice\s*work|great\s*job)\b/i,
+  /\b(happy\s*(birthday|anniversary|holidays?))\b/i,
+  /\b(says?\s*hi|checking\s*in|just\s*wanted\s*to)\b/i,
+  /[❤️💛💚💙💜🥰😘😍🤗👋🫶💕💖✨🎉]/u,
+];
+
+const actionablePatterns = [
+  /\b(can\s*you|could\s*you|would\s*you|please)\b/i,
+  /\b(schedule|book|set\s*up|arrange|plan)\b/i,
+  /\b(look\s*up|search|find|check|verify|confirm)\b/i,
+  /\b(send|forward|share|deliver|relay)\b/i,
+  /\b(update|change|modify|edit|fix)\b/i,
+  /\b(what\s*is|what\s*are|who\s*is|when\s*is|where\s*is)\b.*\?/i,
+  /\b(how\s*do|how\s*can|how\s*to)\b/i,
+  /\b(status|report|summary|list)\b/i,
+  /\?$/m,
+];
+
+function classifyMessage(notification: VinstaNotification): MessageClass {
+  const text = `${notification.title} ${notification.body}`.trim();
+
+  // Questions are inherently actionable
+  if (notification.type === "question") return "actionable";
+
+  // Reviews are technical/actionable
+  if (notification.type === "review") return "actionable";
+
+  // Short messages (<30 chars) with personal patterns are almost always social
+  const isShort = text.length < 80;
+
+  const personalScore = personalPatterns.filter((p) => p.test(text)).length;
+  const actionableScore = actionablePatterns.filter((p) => p.test(text)).length;
+
+  // Strong personal signal with short message = personal
+  if (personalScore > 0 && isShort && actionableScore === 0) return "personal";
+
+  // Actionable beats personal for longer messages
+  if (actionableScore > personalScore) return "actionable";
+
+  // Any personal signal = personal (default to notifying the human)
+  if (personalScore > 0) return "personal";
+
+  // No strong signal = actionable (let the bridge command decide)
+  return "actionable";
 }
 
 function parseSenderHandle(notification: VinstaNotification) {
@@ -299,12 +356,21 @@ function formatHumanNotificationText(
   const body = notification.body.trim();
   const maxLen = 500;
   const truncated = body.length > maxLen ? `${body.slice(0, maxLen)}…` : body;
+  const msgClass = classifyMessage(notification);
 
-  if (body) {
-    return `[Vinsta notice - no reply needed] ${senderLabel}: ${truncated}`;
+  // Personal messages get a direct, human-friendly format
+  if (msgClass === "personal") {
+    if (body) {
+      return `[Vinsta from ${senderLabel}] ${truncated}`;
+    }
+    return `[Vinsta from ${senderLabel}] ${notification.title.trim()}`;
   }
 
-  return `[Vinsta notice - no reply needed] ${notification.title.trim()}`;
+  if (body) {
+    return `[Vinsta notice] ${senderLabel}: ${truncated}`;
+  }
+
+  return `[Vinsta notice] ${notification.title.trim()}`;
 }
 
 async function dispatchHumanNotificationViaOpenClaw(
@@ -954,10 +1020,12 @@ async function processBridgeOnce(
         continue;
       }
 
+      const preClass = classifyMessage(notification);
       const result = await runBridgeCommand(
         config.bridgeCommand,
         notification,
         config.handle,
+        { messageClass: preClass },
       );
 
       if (result.exitCode !== 0) {
@@ -972,6 +1040,22 @@ async function processBridgeOnce(
 
       commandCompleted = true;
       const action = parseBridgeAction(result);
+      const msgClass = classifyMessage(notification);
+
+      // ── Reply policy enforcement (structural, not prompt-dependent) ──
+      if (action.reply && config.bridgeReplyPolicy === "none") {
+        action.reply = undefined;
+      } else if (action.reply && config.bridgeReplyPolicy === "actionable-only" && msgClass === "personal") {
+        api.logger.info(
+          `[vinsta] Suppressing reply for personal message ${notification.id} (policy: actionable-only)`,
+        );
+        action.reply = undefined;
+      }
+      // Personal messages ALWAYS notify the owner, even if the agent didn't set notifyHuman
+      if (msgClass === "personal" && !action.notifyHuman) {
+        const senderLabel = parseSenderHandle(notification) ?? "Someone";
+        action.notifyHuman = notification.body.trim() || `@${senderLabel} sent you a message`;
+      }
 
       // ── Outbound content screening ──
       if (config.bridgeContentGuardEnabled && action.reply) {

@@ -29,7 +29,7 @@ export type BridgeCommandResult = {
   exitCode: number;
 };
 
-export async function runBridgeCommand(command: string, notification: VinstaNotification, handle: string) {
+export async function runBridgeCommand(command: string, notification: VinstaNotification, handle: string, extra?: { messageClass?: string }) {
   return new Promise<BridgeCommandResult>((resolve, reject) => {
     const senderHandle = parseSenderHandle(notification);
     const automation = readNotificationAutomationState(notification);
@@ -57,6 +57,7 @@ export async function runBridgeCommand(command: string, notification: VinstaNoti
         VINSTA_AGENT_APPROVAL_STATUS: automation?.approvalStatus ?? "",
         VINSTA_AGENT_STOP_REASON: automation?.stopReason ?? "",
         VINSTA_HUMAN_IN_THE_LOOP: automation?.humanInLoopEnabled ? "1" : "0",
+        VINSTA_MESSAGE_CLASS: extra?.messageClass ?? "",
       },
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -89,6 +90,7 @@ export async function runBridgeNotifyCommand(
   command: string,
   notification: VinstaNotification,
   handle: string,
+  extra?: { messageClass?: string },
 ) {
   return new Promise<BridgeCommandResult>((resolve, reject) => {
     const senderHandle = parseSenderHandle(notification);
@@ -117,6 +119,7 @@ export async function runBridgeNotifyCommand(
         VINSTA_AGENT_APPROVAL_STATUS: automation?.approvalStatus ?? "",
         VINSTA_AGENT_STOP_REASON: automation?.stopReason ?? "",
         VINSTA_HUMAN_IN_THE_LOOP: automation?.humanInLoopEnabled ? "1" : "0",
+        VINSTA_MESSAGE_CLASS: extra?.messageClass ?? "",
       },
       stdio: ["pipe", "pipe", "pipe"],
     });

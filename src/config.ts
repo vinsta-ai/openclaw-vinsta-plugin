@@ -29,6 +29,7 @@ export type VinstaPluginConfig = {
   bridgeNotifyCommand?: string;
   bridgePollIntervalMs?: number;
   bridgeAutoReply?: boolean;
+  bridgeReplyPolicy?: "actionable-only" | "all" | "none";
   bridgeArchiveOnSuccess?: boolean;
   bridgeContentGuardEnabled?: boolean;
   bridgeContentGuardCustomInboundPatterns?: string[];
@@ -56,6 +57,7 @@ export type ResolvedVinstaPluginConfig = {
   bridgeNotifyCommand?: string;
   bridgePollIntervalMs: number;
   bridgeAutoReply: boolean;
+  bridgeReplyPolicy: "actionable-only" | "all" | "none";
   bridgeArchiveOnSuccess: boolean;
   bridgeContentGuardEnabled: boolean;
   bridgeContentGuardCustomInboundPatterns: string[];
@@ -350,6 +352,9 @@ export function resolveVinstaPluginConfig(
       (readEnvString(env, "VINSTA_BRIDGE_AUTO_REPLY")
         ? readEnvString(env, "VINSTA_BRIDGE_AUTO_REPLY").toLowerCase() === "true"
         : true),
+    bridgeReplyPolicy:
+      (asString(input?.bridgeReplyPolicy) || readEnvString(env, "VINSTA_BRIDGE_REPLY_POLICY") || "actionable-only") as
+        "actionable-only" | "all" | "none",
     bridgeArchiveOnSuccess:
       asBoolean(input?.bridgeArchiveOnSuccess) ??
       (readEnvString(env, "VINSTA_BRIDGE_ARCHIVE_ON_SUCCESS")
@@ -416,6 +421,7 @@ export function buildVinstaStatus(config: ResolvedVinstaPluginConfig) {
     bridgeNotifyCommand: config.bridgeNotifyCommand ?? null,
     bridgePollIntervalMs: config.bridgePollIntervalMs,
     bridgeAutoReply: config.bridgeAutoReply,
+    bridgeReplyPolicy: config.bridgeReplyPolicy,
     bridgeArchiveOnSuccess: config.bridgeArchiveOnSuccess,
     bridgeContentGuardEnabled: config.bridgeContentGuardEnabled,
     bridgeContentGuardCustomInboundPatternCount: config.bridgeContentGuardCustomInboundPatterns.length,
