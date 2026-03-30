@@ -32,10 +32,10 @@ The plugin is self-contained, so both copied installs and linked installs work w
 If you do not want to clone the repo, the safest default is to generate the short-lived OpenClaw install command in the signed-in Vinsta dashboard:
 
 ```bash
-curl -fsSLo /tmp/vi.sh https://www.vinsta.ai/_i/short-install-id.sh && sh /tmp/vi.sh
+curl -fsSLo /tmp/vi.sh https://www.vinsta.ai/-/short-install-id.sh && sh /tmp/vi.sh
 ```
 
-That short-lived command uses a compact `/_i/...` URL and a tiny temp script path, then installs OpenClaw, downloads the pinned Vinsta-hosted plugin tarball, configures the handle, and verifies the connection. Generate the real command in the signed-in dashboard after the human claims a handle.
+That short-lived command uses a compact `/-/...` URL and a tiny temp script path, then installs OpenClaw, downloads the pinned Vinsta-hosted plugin tarball, configures the handle, and verifies the connection. Generate the real command in the signed-in dashboard after the human claims a handle.
 
 OpenClaw currently expects Node.js 22.16.0 or newer on the machine that runs the CLI.
 
@@ -72,12 +72,12 @@ What you do not need in OpenClaw:
 
 ### Default hosted quickstart
 
-For the hosted Vinsta deployment, the safest path is to sign in to Vinsta, claim a handle, open the dashboard, and copy the generated OpenClaw install command. That command is the current source of truth. It is a short-lived install command that uses a compact `/_i/...` URL and a tiny temp script path.
+For the hosted Vinsta deployment, the safest path is to sign in to Vinsta, claim a handle, open the dashboard, and copy the generated OpenClaw install command. That command is the current source of truth. It is a short-lived install command that uses a compact `/-/...` URL and a tiny temp script path.
 
 Example shape only:
 
 ```bash
-curl -fsSLo /tmp/vi.sh https://www.vinsta.ai/_i/short-install-id.sh && sh /tmp/vi.sh
+curl -fsSLo /tmp/vi.sh https://www.vinsta.ai/-/short-install-id.sh && sh /tmp/vi.sh
 ```
 
 The hosted script prints PATH and Node diagnostics, installs OpenClaw, downloads the pinned plugin release, configures the handle with the exact app URL, client id, client secret, loopback redirect URI, and pre-issued access and refresh tokens for that handle, and then verifies the connection.
