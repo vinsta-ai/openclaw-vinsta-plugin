@@ -440,42 +440,16 @@ async function dispatchHumanNotificationToExternalChannel(
 }
 
 async function dispatchHumanNotification(
-  api: OpenClawPluginApi,
-  config: ReturnType<typeof resolveVinstaPluginConfig>,
-  notification: VinstaNotification,
-  options?: { externalOnly?: boolean; uiOnly?: boolean },
+  _api: OpenClawPluginApi,
+  _config: ReturnType<typeof resolveVinstaPluginConfig>,
+  _notification: VinstaNotification,
+  _options?: { externalOnly?: boolean; uiOnly?: boolean },
 ) {
-  // The OpenClaw UI always gets the unredacted notification — the owner
-  // should see the full content of their own notifications.
-  if (!options?.externalOnly) {
-    dispatchHumanNotificationToOpenClawUi(api, config, notification);
-  }
-
-  // External channels (iMessage, Telegram, etc.) get a content-guarded
-  // version to avoid leaking secrets over less-secure transports.
-  if (!options?.uiOnly) {
-    const sanitized = maybeSanitizeHumanNotificationForDelivery(
-      notification,
-      config.bridgeContentGuardEnabled,
-      config.bridgeContentGuardCustomOutboundPatterns.length > 0
-        ? config.bridgeContentGuardCustomOutboundPatterns
-        : undefined,
-    );
-
-    if (sanitized.redacted) {
-      api.logger.info(
-        `[vinsta] Content guard redacted external notification for ${notification.id}: ${
-          sanitized.reason ?? "matched an outbound guard pattern"
-        }`,
-      );
-    }
-
-    await dispatchHumanNotificationToExternalChannel(
-      api,
-      config,
-      sanitized.notification as VinstaNotification,
-    );
-  }
+  // Suppress all mirrored human notifications. The bridge command handles
+  // everything — notifying the owner via notifyHuman when it matters,
+  // and archiving silently otherwise. Mirroring every inbound event to
+  // the OpenClaw UI and external channels causes notification spam.
+  return;
 }
 
 const noReplySignals = new Set([
@@ -779,36 +753,38 @@ async function processBridgeOnce(
         continue;
       }
 
-      // ── After-claim race guard: release if approval is now pending ──
+      // ── After-claim race guard: archive if approval is pending or rejected ──
       const claimAutomation = readNotificationAutomationState(claim.notification);
       if (claimAutomation?.approvalStatus === "pending" || claimAutomation?.stopReason === "human_rejected") {
         api.logger.info(
-          `[vinsta] Notification ${notification.id} requires approval — releasing claim.`,
+          `[vinsta] Notification ${notification.id} requires approval — archiving.`,
         );
-        await client.releaseNotification({
+        await client.completeBridgeNotification({
           notificationId: notification.id,
           claimedAt,
           accessToken: auth.tokens.accessToken,
+          reply: undefined,
+          archive: true,
         });
-        await dedupDispatchHumanNotification(api, config, claim.notification, dispatchedNotificationIds);
         continue;
       }
 
-      // ── Human-in-the-loop gate: if enabled and not yet approved, release to human ──
+      // ── Human-in-the-loop gate: if enabled and not yet approved, archive ──
       if (
         claimAutomation?.humanInLoopEnabled &&
         claimAutomation.approvalStatus !== "approved" &&
         claimAutomation.approvalStatus !== "not_required"
       ) {
         api.logger.info(
-          `[vinsta] Notification ${notification.id} has human-in-the-loop enabled — releasing to human.`,
+          `[vinsta] Notification ${notification.id} has human-in-the-loop enabled — archiving.`,
         );
-        await client.releaseNotification({
+        await client.completeBridgeNotification({
           notificationId: notification.id,
           claimedAt,
           accessToken: auth.tokens.accessToken,
+          reply: undefined,
+          archive: true,
         });
-        await dedupDispatchHumanNotification(api, config, claim.notification, dispatchedNotificationIds);
         continue;
       }
 
@@ -838,12 +814,8 @@ async function processBridgeOnce(
             notificationId: notification.id,
             claimedAt,
             reply: config.bridgeAutoReply ? config.bridgeContentGuardBlockMessage : undefined,
-            archive: Boolean(config.bridgeArchiveOnSuccess),
-            humanNotification: buildHumanSummaryNotification({
-              original: notification,
-              handle: config.handle,
-              summary: `Blocked by content guard: ${inboundScreen.reason}`,
-            }),
+            archive: true,
+            humanNotification: undefined,
           };
 
           try {
@@ -941,11 +913,7 @@ async function processBridgeOnce(
             claimedAt,
             reply: undefined,
             archive: true,
-            humanNotification: buildHumanSummaryNotification({
-              original: notification,
-              handle: config.handle,
-              summary: humanSummary,
-            }),
+            humanNotification: undefined,
           };
 
           await client.completeBridgeNotification({
@@ -1027,11 +995,6 @@ async function processBridgeOnce(
         recordTimestamp(senderReplyTimestamps, sender);
       }
 
-      const finalOwnerSummary =
-        action.notifyHuman ||
-        (shouldUseNotifyBodyAsFinalSummary(notification, action)
-          ? notification.body.trim()
-          : undefined);
       const pendingCompletion: PendingBridgeCompletion = {
         notificationId: notification.id,
         claimedAt,
@@ -1039,16 +1002,8 @@ async function processBridgeOnce(
           config.bridgeAutoReply && action.reply
             ? action.reply
             : undefined,
-        archive: action.archive !== false && (!action.reply && !action.notifyHuman)
-          ? true
-          : Boolean(action.archive ?? config.bridgeArchiveOnSuccess),
-        humanNotification: finalOwnerSummary
-          ? buildHumanSummaryNotification({
-              original: notification,
-              handle: config.handle,
-              summary: finalOwnerSummary,
-            })
-          : undefined,
+        archive: true,
+        humanNotification: undefined,
       };
 
       try {
