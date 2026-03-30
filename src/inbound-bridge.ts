@@ -135,7 +135,11 @@ function isBridgeActionableNotification(
     return false;
   }
 
-  return /^(reply|new message) from @/i.test(notification.title);
+  // All peer-originated notify events are bridge-actionable so the bridge
+  // command can decide whether to notify the owner or archive silently.
+  // Previously only matched "Reply from @..." / "New message from @..." titles,
+  // which caused other notify formats to bypass bridge and spam the UI.
+  return true;
 }
 
 function buildHumanSummaryNotification(input: {
