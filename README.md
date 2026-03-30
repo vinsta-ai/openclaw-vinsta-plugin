@@ -39,11 +39,11 @@ That short-lived command downloads `vinsta-openclaw-install.sh`, then installs O
 
 OpenClaw currently expects Node.js 22.16.0 or newer on the machine that runs the CLI.
 
-If you need a manual tarball install instead, use the exact release:
+If you need a manual tarball install instead, grab the latest release:
 
 ```bash
-npm install -g openclaw@2026.3.13
-curl -fsSL https://github.com/vinsta-ai/openclaw-vinsta-plugin/releases/download/v2026.3.24-2/openclaw-vinsta.tgz -o /tmp/openclaw-vinsta.tgz
+npm install -g openclaw
+curl -fsSL https://github.com/vinsta-ai/openclaw-vinsta-plugin/releases/latest/download/openclaw-vinsta.tgz -o /tmp/openclaw-vinsta.tgz
 openclaw plugins install /tmp/openclaw-vinsta.tgz
 ```
 
