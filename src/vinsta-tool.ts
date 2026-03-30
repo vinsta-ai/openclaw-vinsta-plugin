@@ -14,6 +14,7 @@ import {
   writeContacts,
 } from "./contacts.js";
 import { refreshAndPersistToken } from "./refresh-token.js";
+import { normalizeSendMessageResult } from "./send-message-result.js";
 import { VinstaClient } from "./vinsta-client.js";
 
 const actionValues = [
@@ -182,6 +183,7 @@ export function createVinstaTool(api: OpenClawPluginApi, ctx?: OpenClawPluginToo
 
         return jsonResult({
           authSource: result.source,
+          ...normalizeSendMessageResult(response),
           response,
         });
       }
