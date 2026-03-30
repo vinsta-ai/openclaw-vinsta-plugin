@@ -724,7 +724,7 @@ async function processBridgeOnce(
         recordTimestamp(senderNotifyTimestamps, candidateSender);
         await dedupDispatchHumanNotification(
           api, config,
-          buildHumanSummaryNotification({ original: notification, handle: config.handle, summary: notification.body.trim() }),
+          buildHumanSummaryNotification({ original: notification, handle: config.handle!, summary: notification.body.trim() }),
           dispatchedNotificationIds,
         );
       }
@@ -919,7 +919,11 @@ async function processBridgeOnce(
             claimedAt,
             reply: undefined,
             archive: true,
-            humanNotification: undefined,
+            humanNotification: buildHumanSummaryNotification({
+              original: notification,
+              handle: config.handle!,
+              summary: humanSummary,
+            }),
           };
 
           await client.completeBridgeNotification({
@@ -1017,7 +1021,7 @@ async function processBridgeOnce(
         humanNotification: notifySummary
           ? buildHumanSummaryNotification({
               original: notification,
-              handle: config.handle,
+              handle: config.handle!,
               summary: notifySummary,
             })
           : undefined,
