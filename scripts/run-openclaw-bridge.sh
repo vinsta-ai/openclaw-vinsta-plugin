@@ -183,37 +183,37 @@ assistant_output="$(
   printf '%s' "$json_output" | node -e '
 let input = "";
 process.stdin.setEncoding("utf8");
-process.stdin.on("data", (chunk) => {
+process.stdin.on("data", function onChunk(chunk) {
   input += chunk;
 });
-process.stdin.on("end", () => {
+process.stdin.on("end", function onEnd() {
   try {
     const raw = input.trim();
-    const jsonCandidate = (() => {
+    function extractJson(s) {
       try {
-        JSON.parse(raw);
-        return raw;
+        JSON.parse(s);
+        return s;
       } catch {
-        const firstBrace = raw.indexOf("{");
+        const firstBrace = s.indexOf("{");
         if (firstBrace < 0) {
           throw new Error("No JSON object found in OpenClaw output");
         }
-        // Walk forward matching braces to find the end of the first JSON object
         let depth = 0;
-        let inString = false;
-        let escape = false;
-        for (let i = firstBrace; i < raw.length; i++) {
-          const ch = raw[i];
-          if (escape) { escape = false; continue; }
-          if (ch === "\\") { escape = true; continue; }
-          if (ch === '"') { inString = !inString; continue; }
-          if (inString) continue;
+        let inStr = false;
+        let esc = false;
+        for (let i = firstBrace; i < s.length; i++) {
+          const ch = s[i];
+          if (esc) { esc = false; continue; }
+          if (ch === "\\") { esc = true; continue; }
+          if (ch === "\"") { inStr = !inStr; continue; }
+          if (inStr) continue;
           if (ch === "{") depth++;
-          else if (ch === "}") { depth--; if (depth === 0) return raw.slice(firstBrace, i + 1); }
+          else if (ch === "}") { depth--; if (depth === 0) return s.slice(firstBrace, i + 1); }
         }
         throw new Error("No JSON object found in OpenClaw output");
       }
-    })();
+    }
+    const jsonCandidate = extractJson(raw);
     const parsed = JSON.parse(jsonCandidate);
     const payloads = Array.isArray(parsed?.result?.payloads)
       ? parsed.result.payloads
@@ -221,7 +221,7 @@ process.stdin.on("end", () => {
         ? parsed.payloads
         : [];
     const text = payloads
-      .map((payload) => (typeof payload?.text === "string" ? payload.text.trim() : ""))
+      .map(function(payload) { return typeof payload?.text === "string" ? payload.text.trim() : ""; })
       .filter(Boolean)
       .join("\n\n")
       || (typeof parsed?.result?.summary === "string" ? parsed.result.summary.trim() : "")
