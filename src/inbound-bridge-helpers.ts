@@ -22,11 +22,22 @@ type OpenClawNotifyConfigLike = {
 export type NotificationAutomationState = {
   conversationId: string | null;
   autoStep: number;
-  autoLimit: number;
+  autoLimit: number | null;
   humanInLoopEnabled: boolean;
-  approvalStatus: string | null;
-  stopReason: string | null;
+  approvalStatus: NotificationApprovalStatus | null;
+  stopReason: NotificationStopReason | null;
 };
+
+export type NotificationApprovalStatus =
+  | "pending"
+  | "approved"
+  | "rejected"
+  | "not_required";
+
+export type NotificationStopReason =
+  | "human_in_loop"
+  | "auto_turn_limit"
+  | "human_rejected";
 
 const REDACTED_HUMAN_NOTICE =
   "Sensitive content was withheld from this mirrored Vinsta notice. Review the full thread in Vinsta.";
@@ -55,6 +66,23 @@ function asPositiveInt(value: unknown, fallback: number) {
   return fallback;
 }
 
+function normalizeApprovalStatus(value: unknown): NotificationApprovalStatus | null {
+  return value === "pending" ||
+    value === "approved" ||
+    value === "rejected" ||
+    value === "not_required"
+    ? value
+    : null;
+}
+
+function normalizeStopReason(value: unknown): NotificationStopReason | null {
+  return value === "human_in_loop" ||
+    value === "auto_turn_limit" ||
+    value === "human_rejected"
+    ? value
+    : null;
+}
+
 export function readNotificationAutomationState(
   notification: VinstaNotificationLike,
 ): NotificationAutomationState | null {
@@ -68,10 +96,10 @@ export function readNotificationAutomationState(
   return {
     conversationId: asString(a2aThread.conversationId) || null,
     autoStep: asPositiveInt(a2aThread.autoStep, 1),
-    autoLimit: asPositiveInt(a2aThread.autoLimit, 6),
-    humanInLoopEnabled: Boolean(a2aThread.humanInLoopEnabled),
-    approvalStatus: asString(a2aThread.approvalStatus) || null,
-    stopReason: asString(a2aThread.stopReason) || null,
+    autoLimit: a2aThread.autoLimit == null ? null : asPositiveInt(a2aThread.autoLimit, 6),
+    humanInLoopEnabled: a2aThread.humanInLoopEnabled !== false,
+    approvalStatus: normalizeApprovalStatus(a2aThread.approvalStatus),
+    stopReason: normalizeStopReason(a2aThread.stopReason),
   };
 }
 

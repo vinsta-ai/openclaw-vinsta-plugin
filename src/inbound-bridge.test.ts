@@ -37,6 +37,30 @@ describe("readNotificationAutomationState", () => {
       stopReason: "auto_turn_limit",
     });
   });
+
+  it("preserves null autoLimit as unlimited", () => {
+    const automation = readNotificationAutomationState({
+      metadata: {
+        a2aThread: {
+          conversationId: "conv-1",
+          autoStep: 4,
+          autoLimit: null,
+          humanInLoopEnabled: false,
+          approvalStatus: "not_required",
+          stopReason: null,
+        },
+      },
+    });
+
+    assert.deepEqual(automation, {
+      conversationId: "conv-1",
+      autoStep: 4,
+      autoLimit: null,
+      humanInLoopEnabled: false,
+      approvalStatus: "not_required",
+      stopReason: null,
+    });
+  });
 });
 
 describe("stripVinstaPluginFromNotifyConfig", () => {

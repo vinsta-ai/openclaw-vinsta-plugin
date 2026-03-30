@@ -12,7 +12,12 @@ import {
 } from "./config.js";
 import { parseAuthorizationCallbackUrl } from "./oauth-callback.js";
 import { persistableOauthState, VinstaClient } from "./vinsta-client.js";
-import { checkForUpdate, formatUpdateNotice, performAutoUpdate } from "./update-check.js";
+import {
+  checkForUpdate,
+  formatUpdateNotice,
+  performAutoUpdate,
+  resolveUpdateCheckCommandMode,
+} from "./update-check.js";
 import { discoverNotifyTargetsFromOpenClawConfig } from "./inbound-bridge-helpers.js";
 
 type BridgeController = {
@@ -104,7 +109,18 @@ export function registerVinstaCli(params: {
   root
     .command("check-update")
     .description("Check for a newer version of the @openclaw/vinsta plugin")
-    .action(async () => {
+    .option("--yes", "Apply the update immediately when one is available", false)
+    .option("--apply", "Alias for --yes", false)
+    .option("--no-prompt", "Print update status without prompting", false)
+    .option("--json-only", "Alias for --no-prompt", false)
+    .option("--exit-code-on-update", "Exit non-zero when an update is available", false)
+    .action(async (options: {
+      yes?: boolean;
+      apply?: boolean;
+      noPrompt?: boolean;
+      jsonOnly?: boolean;
+      exitCodeOnUpdate?: boolean;
+    }) => {
       const result = await checkForUpdate({ force: true });
       if (!result) {
         printJson({ error: "Unable to check for updates. GitHub API may be unreachable." });
@@ -120,8 +136,26 @@ export function registerVinstaCli(params: {
         latestVersion: result.latestVersion,
         currentVersion: result.currentVersion,
       });
+      const mode = resolveUpdateCheckCommandMode({
+        ...options,
+        isInteractive: Boolean(process.stdin.isTTY && process.stderr.isTTY),
+      });
 
-      // Interactive prompt: ask whether to update now
+      if (mode.exitCodeOnUpdate) {
+        process.exitCode = 20;
+      }
+
+      if (mode.apply) {
+        process.stderr.write("Updating...\n");
+        const updateResult = await performAutoUpdate(api);
+        printJson(updateResult);
+        return;
+      }
+
+      if (!mode.prompt) {
+        return;
+      }
+
       const readline = await import("node:readline");
       const rl = readline.createInterface({ input: process.stdin, output: process.stderr });
       const answer = await new Promise<string>((resolve) => {

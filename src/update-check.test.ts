@@ -6,6 +6,7 @@ import {
   formatUpdateNotice,
   checkForUpdate,
   performAutoUpdate,
+  resolveUpdateCheckCommandMode,
   _resetForTesting,
 } from "./update-check.js";
 
@@ -220,5 +221,56 @@ describe("performAutoUpdate", () => {
     assert.strictEqual(result.success, true);
     assert.strictEqual(calls.length, 1);
     assert.deepStrictEqual(calls[0]?.args, ["openclaw", "plugins", "update", "vinsta"]);
+  });
+});
+
+describe("resolveUpdateCheckCommandMode", () => {
+  it("keeps interactive prompting for tty humans by default", () => {
+    assert.deepStrictEqual(
+      resolveUpdateCheckCommandMode({ isInteractive: true }),
+      {
+        apply: false,
+        prompt: true,
+        exitCodeOnUpdate: false,
+      },
+    );
+  });
+
+  it("stays non-interactive when no-prompt or json-only is requested", () => {
+    assert.deepStrictEqual(
+      resolveUpdateCheckCommandMode({ noPrompt: true, isInteractive: true, exitCodeOnUpdate: true }),
+      {
+        apply: false,
+        prompt: false,
+        exitCodeOnUpdate: true,
+      },
+    );
+    assert.deepStrictEqual(
+      resolveUpdateCheckCommandMode({ jsonOnly: true, isInteractive: true }),
+      {
+        apply: false,
+        prompt: false,
+        exitCodeOnUpdate: false,
+      },
+    );
+  });
+
+  it("treats --yes and --apply as immediate update modes", () => {
+    assert.deepStrictEqual(
+      resolveUpdateCheckCommandMode({ yes: true, isInteractive: false }),
+      {
+        apply: true,
+        prompt: false,
+        exitCodeOnUpdate: false,
+      },
+    );
+    assert.deepStrictEqual(
+      resolveUpdateCheckCommandMode({ apply: true, isInteractive: true }),
+      {
+        apply: true,
+        prompt: false,
+        exitCodeOnUpdate: false,
+      },
+    );
   });
 });

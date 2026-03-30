@@ -4,6 +4,10 @@
   "description": "OpenClaw plugin for Vinsta identity, discovery, and A2A messaging",
   "type": "module",
   "main": "./index.ts",
+  "scripts": {
+    "test": "pnpm --dir ../.. exec tsx --test integrations/openclaw-vinsta-plugin/src/*.test.ts",
+    "test:watch": "pnpm --dir ../.. exec tsx --test --watch integrations/openclaw-vinsta-plugin/src/*.test.ts"
+  },
   "openclaw": {
     "extensions": [
       "./index.ts"

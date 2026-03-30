@@ -28,6 +28,12 @@ export type AutoUpdateResult = {
   message: string;
 };
 
+export type UpdateCheckCommandMode = {
+  apply: boolean;
+  prompt: boolean;
+  exitCodeOnUpdate: boolean;
+};
+
 let cachedResult: UpdateCheckResult | null = null;
 let cachedAt = 0;
 let lastNotifiedAt = 0;
@@ -159,6 +165,27 @@ export async function performAutoUpdate(
       message: `Update failed: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
+}
+
+export function resolveUpdateCheckCommandMode(input: {
+  apply?: boolean;
+  yes?: boolean;
+  noPrompt?: boolean;
+  jsonOnly?: boolean;
+  exitCodeOnUpdate?: boolean;
+  isInteractive?: boolean;
+}): UpdateCheckCommandMode {
+  const apply = input.apply === true || input.yes === true;
+  const prompt = !apply &&
+    input.noPrompt !== true &&
+    input.jsonOnly !== true &&
+    input.isInteractive !== false;
+
+  return {
+    apply,
+    prompt,
+    exitCodeOnUpdate: input.exitCodeOnUpdate === true,
+  };
 }
 
 function isSuppressed(config: ResolvedVinstaPluginConfig): boolean {

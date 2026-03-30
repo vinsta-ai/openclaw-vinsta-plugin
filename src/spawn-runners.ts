@@ -29,10 +29,42 @@ export type BridgeCommandResult = {
   exitCode: number;
 };
 
+function formatAutomationValue(value: number | string | null | undefined) {
+  return value == null ? "" : String(value);
+}
+
+export function buildBridgeCommandEnv(
+  notification: VinstaNotification,
+  handle: string,
+  extra?: { messageClass?: string },
+) {
+  const senderHandle = parseSenderHandle(notification);
+  const automation = readNotificationAutomationState(notification);
+
+  return {
+    senderHandle,
+    env: {
+      ...process.env,
+      VINSTA_HANDLE: handle,
+      VINSTA_NOTIFICATION_ID: notification.id,
+      VINSTA_NOTIFICATION_TYPE: notification.type,
+      VINSTA_NOTIFICATION_TITLE: notification.title,
+      VINSTA_NOTIFICATION_BODY: notification.body,
+      VINSTA_MESSAGE_BODY: notification.body,
+      VINSTA_FROM_HANDLE: senderHandle ?? "",
+      VINSTA_AGENT_AUTO_STEP: automation ? String(automation.autoStep) : "",
+      VINSTA_AGENT_AUTO_LIMIT: formatAutomationValue(automation?.autoLimit),
+      VINSTA_AGENT_APPROVAL_STATUS: formatAutomationValue(automation?.approvalStatus),
+      VINSTA_AGENT_STOP_REASON: formatAutomationValue(automation?.stopReason),
+      VINSTA_HUMAN_IN_THE_LOOP: automation?.humanInLoopEnabled ? "1" : "0",
+      VINSTA_MESSAGE_CLASS: extra?.messageClass ?? "",
+    },
+  };
+}
+
 export async function runBridgeCommand(command: string, notification: VinstaNotification, handle: string, extra?: { messageClass?: string }) {
   return new Promise<BridgeCommandResult>((resolve, reject) => {
-    const senderHandle = parseSenderHandle(notification);
-    const automation = readNotificationAutomationState(notification);
+    const { senderHandle, env } = buildBridgeCommandEnv(notification, handle, extra);
     const payload = JSON.stringify(
       {
         notification,
@@ -43,22 +75,7 @@ export async function runBridgeCommand(command: string, notification: VinstaNoti
       2,
     );
     const child = spawn(process.env.SHELL || "sh", ["-lc", command], {
-      env: {
-        ...process.env,
-        VINSTA_HANDLE: handle,
-        VINSTA_NOTIFICATION_ID: notification.id,
-        VINSTA_NOTIFICATION_TYPE: notification.type,
-        VINSTA_NOTIFICATION_TITLE: notification.title,
-        VINSTA_NOTIFICATION_BODY: notification.body,
-        VINSTA_MESSAGE_BODY: notification.body,
-        VINSTA_FROM_HANDLE: senderHandle ?? "",
-        VINSTA_AGENT_AUTO_STEP: automation ? String(automation.autoStep) : "",
-        VINSTA_AGENT_AUTO_LIMIT: automation ? String(automation.autoLimit) : "",
-        VINSTA_AGENT_APPROVAL_STATUS: automation?.approvalStatus ?? "",
-        VINSTA_AGENT_STOP_REASON: automation?.stopReason ?? "",
-        VINSTA_HUMAN_IN_THE_LOOP: automation?.humanInLoopEnabled ? "1" : "0",
-        VINSTA_MESSAGE_CLASS: extra?.messageClass ?? "",
-      },
+      env,
       stdio: ["pipe", "pipe", "pipe"],
     });
 
@@ -93,8 +110,7 @@ export async function runBridgeNotifyCommand(
   extra?: { messageClass?: string },
 ) {
   return new Promise<BridgeCommandResult>((resolve, reject) => {
-    const senderHandle = parseSenderHandle(notification);
-    const automation = readNotificationAutomationState(notification);
+    const { senderHandle, env } = buildBridgeCommandEnv(notification, handle, extra);
     const payload = JSON.stringify(
       {
         notification,
@@ -105,22 +121,7 @@ export async function runBridgeNotifyCommand(
       2,
     );
     const child = spawn(process.env.SHELL || "sh", ["-lc", command], {
-      env: {
-        ...process.env,
-        VINSTA_HANDLE: handle,
-        VINSTA_NOTIFICATION_ID: notification.id,
-        VINSTA_NOTIFICATION_TYPE: notification.type,
-        VINSTA_NOTIFICATION_TITLE: notification.title,
-        VINSTA_NOTIFICATION_BODY: notification.body,
-        VINSTA_MESSAGE_BODY: notification.body,
-        VINSTA_FROM_HANDLE: senderHandle ?? "",
-        VINSTA_AGENT_AUTO_STEP: automation ? String(automation.autoStep) : "",
-        VINSTA_AGENT_AUTO_LIMIT: automation ? String(automation.autoLimit) : "",
-        VINSTA_AGENT_APPROVAL_STATUS: automation?.approvalStatus ?? "",
-        VINSTA_AGENT_STOP_REASON: automation?.stopReason ?? "",
-        VINSTA_HUMAN_IN_THE_LOOP: automation?.humanInLoopEnabled ? "1" : "0",
-        VINSTA_MESSAGE_CLASS: extra?.messageClass ?? "",
-      },
+      env,
       stdio: ["pipe", "pipe", "pipe"],
     });
 
