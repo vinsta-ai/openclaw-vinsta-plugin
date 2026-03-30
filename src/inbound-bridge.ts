@@ -494,12 +494,18 @@ function isNoReplySignal(text: string) {
 }
 
 function parseBridgeAction(result: BridgeCommandResult): BridgeAction {
-  if (!result.stdout) {
-    return {};
+  const raw = result.stdout?.trim();
+
+  if (!raw) {
+    return { archive: true };
+  }
+
+  if (isNoReplySignal(raw)) {
+    return { archive: true };
   }
 
   try {
-    const parsed = JSON.parse(result.stdout) as {
+    const parsed = JSON.parse(raw) as {
       reply?: unknown;
       notifyHuman?: unknown;
       notify_human?: unknown;
@@ -1033,7 +1039,9 @@ async function processBridgeOnce(
           config.bridgeAutoReply && action.reply
             ? action.reply
             : undefined,
-        archive: Boolean(action.archive ?? config.bridgeArchiveOnSuccess),
+        archive: action.archive !== false && (!action.reply && !action.notifyHuman)
+          ? true
+          : Boolean(action.archive ?? config.bridgeArchiveOnSuccess),
         humanNotification: finalOwnerSummary
           ? buildHumanSummaryNotification({
               original: notification,
