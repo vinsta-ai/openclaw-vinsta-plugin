@@ -1,5 +1,4 @@
 import type { OpenClawPluginApi, OpenClawPluginToolContext } from "openclaw/plugin-sdk";
-import { jsonResult } from "openclaw/plugin-sdk/agent-runtime";
 import {
   buildVinstaStatus,
   resolveVinstaPluginConfig,
@@ -90,6 +89,18 @@ function readString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function buildJsonResult(payload: unknown) {
+  return {
+    content: [
+      {
+        type: "text" as const,
+        text: JSON.stringify(payload, null, 2),
+      },
+    ],
+    details: payload,
+  };
+}
+
 const INTERNAL_CHANNELS = new Set(["webchat", "cli", ""]);
 
 export function createVinstaTool(api: OpenClawPluginApi, ctx?: OpenClawPluginToolContext) {
@@ -132,7 +143,7 @@ export function createVinstaTool(api: OpenClawPluginApi, ctx?: OpenClawPluginToo
           throw new Error("query required");
         }
 
-        return jsonResult(
+        return buildJsonResult(
           await client.discover(
             query,
             typeof params.limit === "number" ? params.limit : undefined,
@@ -146,7 +157,7 @@ export function createVinstaTool(api: OpenClawPluginApi, ctx?: OpenClawPluginToo
           throw new Error("handle required");
         }
 
-        return jsonResult(await client.resolve(handle));
+        return buildJsonResult(await client.resolve(handle));
       }
 
       if (action === "inspect_card") {
@@ -155,7 +166,7 @@ export function createVinstaTool(api: OpenClawPluginApi, ctx?: OpenClawPluginToo
           throw new Error("handle required");
         }
 
-        return jsonResult(
+        return buildJsonResult(
           await client.getAgentCard(handle, {
             verify: typeof params.verify === "boolean" ? params.verify : true,
           }),
@@ -163,7 +174,7 @@ export function createVinstaTool(api: OpenClawPluginApi, ctx?: OpenClawPluginToo
       }
 
       if (action === "auth_status") {
-        return jsonResult(buildVinstaStatus(config));
+        return buildJsonResult(buildVinstaStatus(config));
       }
 
       if (action === "send_message") {
@@ -181,7 +192,7 @@ export function createVinstaTool(api: OpenClawPluginApi, ctx?: OpenClawPluginToo
           accessToken: result.accessToken,
         });
 
-        return jsonResult({
+        return buildJsonResult({
           authSource: result.source,
           ...normalizeSendMessageResult(response),
           response,
@@ -256,7 +267,7 @@ export function createVinstaTool(api: OpenClawPluginApi, ctx?: OpenClawPluginToo
 
         const healthy = issues.length === 0 && tokenStatus === "valid" && handleResolvable && connectivityOk;
 
-        return jsonResult({
+        return buildJsonResult({
           healthy,
           handle: config.handle ?? null,
           authMode: status.authMode,
@@ -276,7 +287,7 @@ export function createVinstaTool(api: OpenClawPluginApi, ctx?: OpenClawPluginToo
 
       if (action === "list_contacts") {
         const contacts = await readContacts();
-        return jsonResult(contacts);
+        return buildJsonResult(contacts);
       }
 
       if (action === "save_contact") {
@@ -297,7 +308,7 @@ export function createVinstaTool(api: OpenClawPluginApi, ctx?: OpenClawPluginToo
         const saved = updated.find(
           (c) => c.handle === handle.toLowerCase().replace(/^@/, ""),
         );
-        return jsonResult(saved);
+        return buildJsonResult(saved);
       }
 
       if (action === "remove_contact") {
@@ -309,7 +320,7 @@ export function createVinstaTool(api: OpenClawPluginApi, ctx?: OpenClawPluginToo
         const contacts = await readContacts();
         const updated = removeContact(contacts, handle);
         await writeContacts(updated);
-        return jsonResult({ removed: handle, remaining: updated.length });
+        return buildJsonResult({ removed: handle, remaining: updated.length });
       }
 
       if (action === "search_contacts") {
@@ -319,7 +330,7 @@ export function createVinstaTool(api: OpenClawPluginApi, ctx?: OpenClawPluginToo
         }
 
         const contacts = await readContacts();
-        return jsonResult(searchContacts(contacts, query));
+        return buildJsonResult(searchContacts(contacts, query));
       }
 
       if (action === "list_pending") {
@@ -332,7 +343,7 @@ export function createVinstaTool(api: OpenClawPluginApi, ctx?: OpenClawPluginToo
           const auto = readNotificationAutomationState({ metadata: n.metadata ?? null });
           return auto?.approvalStatus === "pending";
         });
-        return jsonResult({
+        return buildJsonResult({
           pending: pending.map((n: { id: string; senderHandle?: string | null; title: string; body: string; createdAt: string }) => ({
             notificationId: n.id,
             sender: n.senderHandle ?? null,
@@ -358,7 +369,7 @@ export function createVinstaTool(api: OpenClawPluginApi, ctx?: OpenClawPluginToo
           accessToken: result.accessToken,
         });
 
-        return jsonResult({
+        return buildJsonResult({
           notificationId,
           decision,
           status: decision === "approve" ? "approved" : "rejected",
