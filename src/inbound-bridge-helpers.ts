@@ -9,6 +9,8 @@ type HumanNotificationLike = {
   body: string;
 };
 
+export type BridgeMessageClass = "personal" | "actionable" | "technical";
+
 type OpenClawNotifyConfigLike = {
   plugins?: {
     entries?: Record<string, unknown>;
@@ -141,6 +143,41 @@ export function shouldSuppressFreshHumanNotificationForBridgeCommand(
 ) {
   const normalized = typeof command === "string" ? command.trim() : "";
   return Boolean(normalized);
+}
+
+export function isMirroredVinstaHumanNotice(text: string | null | undefined) {
+  const normalized = typeof text === "string" ? text.trim() : "";
+
+  if (!normalized) {
+    return false;
+  }
+
+  return /^\[Vinsta(?: notice| from [^\]]*| — review required)\]/i.test(normalized);
+}
+
+export function resolveOwnerMirrorText(input: {
+  classification: BridgeMessageClass;
+  originalBody?: string | null;
+  reply?: string | null;
+  notifyHuman?: string | null;
+}) {
+  const originalBody = asString(input.originalBody);
+  const reply = asString(input.reply);
+  const notifyHuman = asString(input.notifyHuman);
+
+  if (input.classification === "personal") {
+    return originalBody || notifyHuman || reply;
+  }
+
+  if (reply) {
+    return reply;
+  }
+
+  if (notifyHuman) {
+    return notifyHuman;
+  }
+
+  return originalBody;
 }
 
 export function sanitizeHumanNotificationForDelivery<T extends HumanNotificationLike>(

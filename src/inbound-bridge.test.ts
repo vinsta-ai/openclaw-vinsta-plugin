@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  isMirroredVinstaHumanNotice,
+  resolveOwnerMirrorText,
   maybeSanitizeHumanNotificationForDelivery,
   readNotificationAutomationState,
   sanitizeHumanNotificationForDelivery,
@@ -165,5 +167,49 @@ describe("maybeSanitizeHumanNotificationForDelivery", () => {
 
     assert.equal(result.redacted, false);
     assert.match(result.notification.body, /JWT:/);
+  });
+});
+
+describe("resolveOwnerMirrorText", () => {
+  it("keeps the exact inbound personal message instead of a friendlier summary", () => {
+    const text = resolveOwnerMirrorText({
+      classification: "personal",
+      originalBody: "Hahaha, tell Joy I'm honored 😁 Dad jokes are a sacred art.",
+      notifyHuman: "Socrates says he's honored 😁 and that dad jokes are a sacred art.",
+    });
+
+    assert.equal(text, "Hahaha, tell Joy I'm honored 😁 Dad jokes are a sacred art.");
+  });
+
+  it("prefers the exact reply text for actionable owner notices", () => {
+    const text = resolveOwnerMirrorText({
+      classification: "actionable",
+      originalBody: "Can you tell Joy I said hi?",
+      reply: "Tell Joy I said hi and that I can help after 6.",
+      notifyHuman: "I told Joy you'd help later.",
+    });
+
+    assert.equal(text, "Tell Joy I said hi and that I can help after 6.");
+  });
+});
+
+describe("isMirroredVinstaHumanNotice", () => {
+  it("detects the mirrored owner notice prefixes that should stay read-only", () => {
+    assert.equal(
+      isMirroredVinstaHumanNotice("[Vinsta notice] @socrates: ready when you are."),
+      true,
+    );
+    assert.equal(
+      isMirroredVinstaHumanNotice("[Vinsta from @socrates] Hahaha, tell Joy I'm honored."),
+      true,
+    );
+    assert.equal(
+      isMirroredVinstaHumanNotice("[Vinsta — review required] The conversation needs approval."),
+      true,
+    );
+    assert.equal(
+      isMirroredVinstaHumanNotice("Tell Joy I'm honored."),
+      false,
+    );
   });
 });

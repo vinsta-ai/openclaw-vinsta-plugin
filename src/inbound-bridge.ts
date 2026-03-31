@@ -39,9 +39,11 @@ import {
 } from "./vinsta-client.js";
 import { screenInbound, screenOutbound } from "./content-guard.js";
 import {
+  isMirroredVinstaHumanNotice,
   discoverNotifyTargetsFromOpenClawConfig,
   maybeSanitizeHumanNotificationForDelivery,
   readNotificationAutomationState,
+  resolveOwnerMirrorText,
   shouldSuppressFreshHumanNotificationForBridgeCommand,
 } from "./inbound-bridge-helpers.js";
 import { maybeAutoUpdate, type MaybeAutoUpdateResult } from "./update-check.js";
@@ -200,24 +202,26 @@ function isBridgeActionableNotification(
   return true;
 }
 
-function buildHumanSummaryNotification(input: {
+function buildHumanMirrorNotification(input: {
   original: VinstaNotification;
   handle: string;
-  summary: string;
+  body: string;
+  title?: string;
 }) {
   const senderHandle = parseSenderHandle(input.original);
-  const title = senderHandle
-    ? `Final update from @${senderHandle}`
-    : `Final update for @${input.handle}`;
+  const title =
+    input.title?.trim() ||
+    input.original.title?.trim() ||
+    (senderHandle ? `Message from @${senderHandle}` : `Message for @${input.handle}`);
 
   return {
-    id: `bridge-summary-${input.original.id}`,
+    id: `bridge-owner-notice-${input.original.id}`,
     recipientId: input.handle,
     senderId: input.original.senderId,
     senderHandle,
     type: "notify",
     title,
-    body: input.summary.trim(),
+    body: input.body.trim(),
     createdAt: new Date().toISOString(),
     readAt: null,
     bridgeClaimedAt: null,
@@ -363,9 +367,10 @@ function formatHumanNotificationText(
   const maxLen = 500;
   const truncated = body.length > maxLen ? `${body.slice(0, maxLen)}…` : body;
   const msgClass = classifyMessage(notification);
+  const mirroredNotice = isMirroredVinstaHumanNotice(body);
 
   // Personal messages get a direct, human-friendly format
-  if (msgClass === "personal") {
+  if (msgClass === "personal" || mirroredNotice) {
     if (body) {
       return `[Vinsta from ${senderLabel}] ${truncated}`;
     }
@@ -806,7 +811,11 @@ async function processBridgeOnce(
         recordTimestamp(senderNotifyTimestamps, candidateSender);
         await dedupDispatchHumanNotification(
           api, config,
-          buildHumanSummaryNotification({ original: notification, handle: config.handle!, summary: notification.body.trim() }),
+          buildHumanMirrorNotification({
+            original: notification,
+            handle: config.handle!,
+            body: notification.body.trim(),
+          }),
           dispatchedNotificationIds,
         );
       }
@@ -1001,10 +1010,10 @@ async function processBridgeOnce(
             claimedAt,
             reply: undefined,
             archive: true,
-            humanNotification: buildHumanSummaryNotification({
+            humanNotification: buildHumanMirrorNotification({
               original: notification,
               handle: config.handle!,
-              summary: humanSummary,
+              body: humanSummary,
             }),
           };
 
@@ -1105,10 +1114,18 @@ async function processBridgeOnce(
         recordTimestamp(senderReplyTimestamps, sender);
       }
 
-      // If the agent set notifyHuman, or the notification body should be surfaced
-      // as a final summary, build a human notification for dispatch.
-      const notifySummary = action.notifyHuman
-        ?? (shouldUseNotifyBodyAsFinalSummary(notification, action) ? notification.body.trim() : undefined);
+      const shouldNotifyHuman =
+        msgClass === "personal" ||
+        Boolean(action.notifyHuman) ||
+        shouldUseNotifyBodyAsFinalSummary(notification, action);
+      const ownerMirrorText = shouldNotifyHuman
+        ? resolveOwnerMirrorText({
+            classification: msgClass,
+            originalBody: notification.body,
+            reply: action.reply,
+            notifyHuman: action.notifyHuman,
+          })
+        : "";
 
       const pendingCompletion: PendingBridgeCompletion = {
         notificationId: notification.id,
@@ -1118,11 +1135,11 @@ async function processBridgeOnce(
             ? action.reply
             : undefined,
         archive: action.archive !== false,
-        humanNotification: notifySummary
-          ? buildHumanSummaryNotification({
+        humanNotification: ownerMirrorText
+          ? buildHumanMirrorNotification({
               original: notification,
               handle: config.handle!,
-              summary: notifySummary,
+              body: ownerMirrorText,
             })
           : undefined,
       };
