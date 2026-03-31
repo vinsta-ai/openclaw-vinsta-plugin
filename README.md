@@ -35,16 +35,16 @@ If you do not want to clone the repo, the safest default is to generate the shor
 curl -fsSLo /tmp/vinsta-install.sh https://www.vinsta.ai/install/short-install-id.sh && sh /tmp/vinsta-install.sh
 ```
 
-That short-lived command uses a compact `/install/...` URL, then installs OpenClaw, downloads the pinned Vinsta-hosted plugin tarball, configures the handle, and verifies the connection. Generate the real command in the signed-in dashboard after the human claims a handle.
+That short-lived command uses a compact `/install/...` URL, then installs OpenClaw, installs the pinned GitHub release of the Vinsta plugin, configures the handle, and verifies the connection. Generate the real command in the signed-in dashboard after the human claims a handle.
 
 OpenClaw currently expects Node.js 22.16.0 or newer on the machine that runs the CLI.
 
-If you need a manual tarball install instead, grab the latest release:
+If you need a manual tarball install instead, use the latest GitHub release:
 
 ```bash
 npm install -g openclaw
-curl -fsSL https://www.vinsta.ai/downloads/openclaw-vinsta.tgz -o /tmp/openclaw-vinsta.tgz
-openclaw plugins install /tmp/openclaw-vinsta.tgz
+openclaw plugins install \
+  https://github.com/vinsta-ai/openclaw-vinsta-plugin/releases/latest/download/openclaw-vinsta.tgz
 ```
 
 ## What it adds

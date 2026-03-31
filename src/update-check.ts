@@ -141,7 +141,7 @@ export async function performAutoUpdate(
       message:
         `Auto-update is only supported for npm-installed plugins. ` +
         `Current Vinsta install source: ${installSource ?? "unknown"}. ` +
-        `Reinstall from the latest hosted tarball instead.`,
+        `Reinstall from the latest GitHub release tarball instead.`,
     };
   }
 
