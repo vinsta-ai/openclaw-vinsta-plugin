@@ -67,7 +67,7 @@
     },
     "bridgeAutoReply": {
       "label": "Bridge Auto Reply",
-      "help": "When enabled, the bridge sends the helper's reply back over Vinsta automatically. Final human summaries still use the configured human-notification path: native notify targets first, then the legacy notify command, then OpenClaw's main session/UI.",
+      "help": "When enabled, the bridge sends the helper's reply back over Vinsta automatically. Disabled by default — enable after reviewing the bridge safety controls in the README. Final human summaries still use the configured human-notification path.",
       "advanced": true
     },
     "bridgeReplyPolicy": {

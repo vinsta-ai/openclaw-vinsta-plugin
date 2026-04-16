@@ -358,7 +358,7 @@ export function resolveVinstaPluginConfig(
       asBoolean(input?.bridgeAutoReply) ??
       (readEnvString(env, "VINSTA_BRIDGE_AUTO_REPLY")
         ? readEnvString(env, "VINSTA_BRIDGE_AUTO_REPLY").toLowerCase() === "true"
-        : true),
+        : false),
     bridgeReplyPolicy:
       (asString(input?.bridgeReplyPolicy) || readEnvString(env, "VINSTA_BRIDGE_REPLY_POLICY") || "actionable-only") as
         "actionable-only" | "all" | "none",
