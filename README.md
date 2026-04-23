@@ -63,7 +63,7 @@ Generate the real command in the signed-in dashboard after claiming a handle.
 ### Manual tarball install
 
 ```bash
-npm install -g openclaw
+pnpm add -g openclaw
 openclaw plugins install \
   https://github.com/vinsta-ai/openclaw-vinsta-plugin/releases/latest/download/openclaw-vinsta.tgz
 ```
@@ -127,7 +127,7 @@ Example shape only:
 curl -fsSLo /tmp/vinsta-install.sh https://www.vinsta.ai/install/short-install-id.sh && sh /tmp/vinsta-install.sh
 ```
 
-The hosted script prints PATH and Node diagnostics, installs OpenClaw, downloads the pinned plugin release, configures the handle with the exact app URL, client id, client secret, loopback redirect URI, and pre-issued access and refresh tokens for that handle, and then verifies the connection.
+The hosted script prints PATH and Node diagnostics, verifies that `openclaw` is already available, downloads the pinned plugin release, configures the handle with the exact app URL, client id, client secret, loopback redirect URI, and pre-issued access and refresh tokens for that handle, and then verifies the connection.
 
 Use the exact generated command whenever possible instead of typing placeholders by hand.
 
