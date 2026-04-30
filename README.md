@@ -251,6 +251,10 @@ The bridge passes the inbound payload through stdin (as JSON) and environment va
 - `VINSTA_FROM_HANDLE`
 - `VINSTA_NOTIFICATION_ID`
 - `VINSTA_NOTIFICATION_TITLE`
+- `VINSTA_TRACEPARENT`
+- `VINSTA_TRACE_ID`
+- `VINSTA_PARENT_SPAN_ID`
+- `VINSTA_TRACE_FLAGS`
 
 The shipped `run-openclaw-bridge.sh` helper asks OpenClaw to return a small JSON object. It can:
 

@@ -13,6 +13,7 @@ import { spawn } from "./node-cp.js";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import type { VinstaNotification } from "./vinsta-client.js";
 import { readNotificationAutomationState, stripVinstaPluginFromNotifyConfig } from "./inbound-bridge-helpers.js";
+import type { VinstaTraceContext } from "./trace-context.js";
 
 function parseSenderHandle(notification: VinstaNotification) {
   if (notification.senderHandle) {
@@ -36,7 +37,12 @@ function formatAutomationValue(value: number | string | null | undefined) {
 export function buildBridgeCommandEnv(
   notification: VinstaNotification,
   handle: string,
-  extra?: { messageClass?: string },
+  extra?: {
+    messageClass?: string;
+    traceContext?: VinstaTraceContext | null;
+    observabilityRunId?: string | null;
+    commandSpanId?: string | null;
+  },
 ) {
   const senderHandle = parseSenderHandle(notification);
   const automation = readNotificationAutomationState(notification);
@@ -58,11 +64,27 @@ export function buildBridgeCommandEnv(
       VINSTA_AGENT_STOP_REASON: formatAutomationValue(automation?.stopReason),
       VINSTA_HUMAN_IN_THE_LOOP: automation?.humanInLoopEnabled ? "1" : "0",
       VINSTA_MESSAGE_CLASS: extra?.messageClass ?? "",
+      VINSTA_OBSERVABILITY_RUN_ID: extra?.observabilityRunId ?? "",
+      VINSTA_COMMAND_SPAN_ID: extra?.commandSpanId ?? "",
+      VINSTA_TRACEPARENT: extra?.traceContext?.traceparent ?? "",
+      VINSTA_TRACE_ID: extra?.traceContext?.traceId ?? "",
+      VINSTA_PARENT_SPAN_ID: extra?.traceContext?.parentSpanId ?? "",
+      VINSTA_TRACE_FLAGS: extra?.traceContext?.traceFlags ?? "",
     },
   };
 }
 
-export async function runBridgeCommand(command: string, notification: VinstaNotification, handle: string, extra?: { messageClass?: string }) {
+export async function runBridgeCommand(
+  command: string,
+  notification: VinstaNotification,
+  handle: string,
+  extra?: {
+    messageClass?: string;
+    traceContext?: VinstaTraceContext | null;
+    observabilityRunId?: string | null;
+    commandSpanId?: string | null;
+  },
+) {
   return new Promise<BridgeCommandResult>((resolve, reject) => {
     const { senderHandle, env } = buildBridgeCommandEnv(notification, handle, extra);
     const payload = JSON.stringify(
@@ -70,6 +92,9 @@ export async function runBridgeCommand(command: string, notification: VinstaNoti
         notification,
         handle,
         senderHandle,
+        traceContext: extra?.traceContext ?? null,
+        observabilityRunId: extra?.observabilityRunId ?? null,
+        commandSpanId: extra?.commandSpanId ?? null,
       },
       null,
       2,

@@ -43,6 +43,8 @@ export type NotificationStopReason =
 
 const REDACTED_HUMAN_NOTICE =
   "Sensitive content was withheld from this mirrored Vinsta notice. Review the full thread in Vinsta.";
+const SECRET_VALUE_RE = /(bearer\s+[a-z0-9._-]+|sk-[a-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|eyJ[a-z0-9_-]+\.[a-z0-9_-]+\.[a-z0-9_-]+|-----BEGIN [A-Z ]+PRIVATE KEY-----)/gi;
+const MAX_COMMAND_ERROR_LENGTH = 500;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -218,6 +220,16 @@ export function maybeSanitizeHumanNotificationForDelivery<T extends HumanNotific
   }
 
   return sanitizeHumanNotificationForDelivery(notification, customPatterns);
+}
+
+export function redactBridgeCommandError(value: string | null | undefined) {
+  const input = asString(value);
+  if (!input) return null;
+
+  const redacted = input.replace(SECRET_VALUE_RE, "[redacted]");
+  return redacted.length > MAX_COMMAND_ERROR_LENGTH
+    ? `${redacted.slice(0, MAX_COMMAND_ERROR_LENGTH)}...[truncated]`
+    : redacted;
 }
 
 type OpenClawConfigLike = {

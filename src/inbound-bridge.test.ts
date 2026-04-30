@@ -4,6 +4,7 @@ import {
   isMirroredVinstaHumanNotice,
   resolveOwnerMirrorText,
   maybeSanitizeHumanNotificationForDelivery,
+  redactBridgeCommandError,
   readNotificationAutomationState,
   sanitizeHumanNotificationForDelivery,
   shouldSuppressFreshHumanNotificationForBridgeCommand,
@@ -167,6 +168,20 @@ describe("maybeSanitizeHumanNotificationForDelivery", () => {
 
     assert.equal(result.redacted, false);
     assert.match(result.notification.body, /JWT:/);
+  });
+});
+
+describe("redactBridgeCommandError", () => {
+  it("redacts common secrets and truncates command output", () => {
+    const redacted = redactBridgeCommandError(`failed with Bearer token_123 ${"x".repeat(600)}`);
+
+    assert.ok(redacted);
+    assert.match(redacted, /\[redacted\]/);
+    assert.match(redacted, /\[truncated\]$/);
+  });
+
+  it("returns null for empty command output", () => {
+    assert.equal(redactBridgeCommandError(""), null);
   });
 });
 

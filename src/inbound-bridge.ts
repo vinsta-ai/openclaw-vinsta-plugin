@@ -42,11 +42,18 @@ import {
   isMirroredVinstaHumanNotice,
   discoverNotifyTargetsFromOpenClawConfig,
   maybeSanitizeHumanNotificationForDelivery,
+  redactBridgeCommandError,
   readNotificationAutomationState,
   resolveOwnerMirrorText,
   shouldSuppressFreshHumanNotificationForBridgeCommand,
 } from "./inbound-bridge-helpers.js";
 import { maybeAutoUpdate, type MaybeAutoUpdateResult } from "./update-check.js";
+import {
+  buildVinstaTraceparent,
+  createVinstaSpanId,
+  extractVinstaTraceContext,
+  type VinstaTraceContext,
+} from "./trace-context.js";
 
 type MessageClass = "personal" | "actionable" | "technical";
 
@@ -70,6 +77,14 @@ type BridgeStatus = {
   notified: number;
   handle: string | null;
   unreadCount?: number;
+};
+
+type BridgeObservabilityRun = {
+  id: string;
+  traceId: string;
+  commandSpanId: string;
+  parentSpanId?: string;
+  traceContext: VinstaTraceContext;
 };
 
 const bridgeClaimTtlMs = 15 * 60_000;
@@ -151,6 +166,175 @@ function parseSenderHandle(notification: VinstaNotification) {
 
   const match = notification.title.match(/@([a-z0-9-]+)/i);
   return match?.[1]?.toLowerCase() ?? null;
+}
+
+async function startBridgeObservabilityRun(params: {
+  api: OpenClawPluginApi;
+  client: VinstaClient;
+  config: ReturnType<typeof resolveVinstaPluginConfig>;
+  accessToken: string;
+  notification: VinstaNotification;
+}) {
+  try {
+    const sender = parseSenderHandle(params.notification);
+    const inboundTrace = extractVinstaTraceContext(params.notification.metadata);
+    const response = await params.client.createObservabilityRun({
+      accessToken: params.accessToken,
+      handle: params.config.handle ?? undefined,
+      traceId: inboundTrace?.traceId,
+      rootSpanId: inboundTrace?.parentSpanId ?? null,
+      source: "openclaw",
+      name: "openclaw.bridge.notification",
+      actorLabel: sender ? `@${sender}` : "unknown",
+      summary: `OpenClaw bridge processing ${params.notification.id}.`,
+      metadata: {
+        notificationId: params.notification.id,
+        notificationType: params.notification.type,
+        senderHandle: sender,
+        title: params.notification.title,
+        traceparent: inboundTrace?.traceparent ?? null,
+        parentSpanId: inboundTrace?.parentSpanId ?? null,
+        traceFlags: inboundTrace?.traceFlags ?? null,
+      },
+    });
+    const commandSpanId = createVinstaSpanId();
+    const traceContext = {
+      traceId: response.run.traceId,
+      parentSpanId: commandSpanId,
+      traceFlags: inboundTrace?.traceFlags ?? "01",
+      traceparent: buildVinstaTraceparent({
+        traceId: response.run.traceId,
+        spanId: commandSpanId,
+        traceFlags: inboundTrace?.traceFlags ?? "01",
+      }),
+    };
+
+    return {
+      id: response.run.id,
+      traceId: response.run.traceId,
+      commandSpanId,
+      parentSpanId: inboundTrace?.parentSpanId,
+      traceContext,
+    } satisfies BridgeObservabilityRun;
+  } catch (error) {
+    params.api.logger.warn(
+      `[vinsta] Failed to start bridge observability run for ${params.notification.id}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return null;
+  }
+}
+
+async function recordBridgeObservabilityEvent(params: {
+  api: OpenClawPluginApi;
+  client: VinstaClient;
+  config: ReturnType<typeof resolveVinstaPluginConfig>;
+  accessToken: string;
+  run: BridgeObservabilityRun | null;
+  notification: VinstaNotification;
+  eventType: string;
+  severity?: "debug" | "info" | "warning" | "error" | "critical";
+  message: string;
+  attributes?: Record<string, unknown>;
+}) {
+  try {
+    await params.client.recordObservabilityEvent({
+      accessToken: params.accessToken,
+      handle: params.config.handle ?? undefined,
+      runId: params.run?.id ?? null,
+      eventType: params.eventType,
+      severity: params.severity ?? "info",
+      message: params.message,
+      attributes: {
+        notificationId: params.notification.id,
+        notificationType: params.notification.type,
+        traceId: params.run?.traceId ?? null,
+        ...(params.attributes ?? {}),
+      },
+    });
+  } catch (error) {
+    params.api.logger.warn(
+      `[vinsta] Failed to record bridge observability event ${params.eventType}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+}
+
+async function finishBridgeObservabilityRun(params: {
+  api: OpenClawPluginApi;
+  client: VinstaClient;
+  config: ReturnType<typeof resolveVinstaPluginConfig>;
+  accessToken: string;
+  run: BridgeObservabilityRun | null;
+  status: "succeeded" | "failed" | "waiting" | "denied" | "canceled" | "timed_out";
+  outcomeCategory?: string;
+  summary: string;
+  metadata?: Record<string, unknown>;
+}) {
+  if (!params.run) {
+    return;
+  }
+
+  try {
+    await params.client.finishObservabilityRun({
+      accessToken: params.accessToken,
+      handle: params.config.handle ?? undefined,
+      runId: params.run.id,
+      status: params.status,
+      outcomeCategory: params.outcomeCategory,
+      summary: params.summary,
+      metadata: params.metadata,
+    });
+  } catch (error) {
+    params.api.logger.warn(
+      `[vinsta] Failed to finish bridge observability run ${params.run.id}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+}
+
+async function recordBridgeCommandSpan(params: {
+  api: OpenClawPluginApi;
+  client: VinstaClient;
+  config: ReturnType<typeof resolveVinstaPluginConfig>;
+  accessToken: string;
+  run: BridgeObservabilityRun | null;
+  name: string;
+  status: "succeeded" | "failed";
+  startedAt: string;
+  attributes?: Record<string, unknown>;
+  errorMessage?: string | null;
+}) {
+  if (!params.run) {
+    return;
+  }
+
+  try {
+    await params.client.createObservabilitySpan({
+      accessToken: params.accessToken,
+      handle: params.config.handle ?? undefined,
+      runId: params.run.id,
+      name: params.name,
+      kind: "tool",
+      spanId: params.run.commandSpanId,
+      parentSpanId: params.run.parentSpanId ?? null,
+      status: params.status,
+      startedAt: params.startedAt,
+      endedAt: new Date().toISOString(),
+      attributes: params.attributes,
+      errorType: params.status === "failed" ? "bridge_command_failed" : null,
+      errorMessageRedacted: redactBridgeCommandError(params.errorMessage),
+    });
+  } catch (error) {
+    params.api.logger.warn(
+      `[vinsta] Failed to record bridge command span: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
 }
 
 function isBridgeActionableNotification(
@@ -787,12 +971,32 @@ async function processBridgeOnce(
         `[vinsta] Skipping bridge processing for rate-limited sender @${candidateSender} (${notification.id})`,
       );
       // Claim and archive immediately — no bridge command, no reply
+      let rateLimitedRun: BridgeObservabilityRun | null = null;
       try {
         const claim = await client.claimNotification({
           notificationId: notification.id,
           accessToken: auth.tokens.accessToken,
         });
         if (claim.claimed && claim.notification.readAt) {
+          rateLimitedRun = await startBridgeObservabilityRun({
+            api,
+            client,
+            config,
+            accessToken: auth.tokens.accessToken,
+            notification: claim.notification,
+          });
+          await recordBridgeObservabilityEvent({
+            api,
+            client,
+            config,
+            accessToken: auth.tokens.accessToken,
+            run: rateLimitedRun,
+            notification: claim.notification,
+            eventType: "openclaw.bridge.rate_limited",
+            severity: "warning",
+            message: `Skipped Vinsta notification ${notification.id} because @${candidateSender} is rate-limited.`,
+            attributes: { senderHandle: candidateSender },
+          });
           await client.completeBridgeNotification({
             notificationId: notification.id,
             claimedAt: claim.notification.readAt,
@@ -800,8 +1004,33 @@ async function processBridgeOnce(
             reply: undefined,
             archive: true,
           });
+          await finishBridgeObservabilityRun({
+            api,
+            client,
+            config,
+            accessToken: auth.tokens.accessToken,
+            run: rateLimitedRun,
+            status: "denied",
+            outcomeCategory: "policy_denied",
+            summary: `OpenClaw bridge archived ${notification.id} because @${candidateSender} is rate-limited.`,
+            metadata: { senderHandle: candidateSender },
+          });
         }
       } catch (error) {
+        await finishBridgeObservabilityRun({
+          api,
+          client,
+          config,
+          accessToken: auth.tokens.accessToken,
+          run: rateLimitedRun,
+          status: "waiting",
+          outcomeCategory: "error",
+          summary: `OpenClaw bridge could not archive rate-limited notification ${notification.id}.`,
+          metadata: {
+            senderHandle: candidateSender,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        });
         api.logger.warn(
           `[vinsta] Failed to archive rate-limited notification ${notification.id}: ${error instanceof Error ? error.message : String(error)}`,
         );
@@ -825,6 +1054,7 @@ async function processBridgeOnce(
     inFlight.add(notification.id);
     let claimedAt: string | null = null;
     let commandCompleted = false;
+    let bridgeRun: BridgeObservabilityRun | null = null;
 
     try {
       const claim = await client.claimNotification({
@@ -837,6 +1067,23 @@ async function processBridgeOnce(
       }
 
       claimedAt = claim.notification.readAt ?? null;
+      bridgeRun = await startBridgeObservabilityRun({
+        api,
+        client,
+        config,
+        accessToken: auth.tokens.accessToken,
+        notification: claim.notification,
+      });
+      await recordBridgeObservabilityEvent({
+        api,
+        client,
+        config,
+        accessToken: auth.tokens.accessToken,
+        run: bridgeRun,
+        notification: claim.notification,
+        eventType: "openclaw.bridge.notification.claimed",
+        message: `Claimed Vinsta notification ${notification.id}.`,
+      });
 
       if (!claimedAt) {
         api.logger.error(
@@ -846,6 +1093,16 @@ async function processBridgeOnce(
           notificationId: notification.id,
           claimedAt: claim.notification.readAt ?? "",
           accessToken: auth.tokens.accessToken,
+        });
+        await finishBridgeObservabilityRun({
+          api,
+          client,
+          config,
+          accessToken: auth.tokens.accessToken,
+          run: bridgeRun,
+          status: "failed",
+          outcomeCategory: "error",
+          summary: `Notification ${notification.id} was claimed without a read timestamp.`,
         });
         continue;
       }
@@ -862,6 +1119,17 @@ async function processBridgeOnce(
           accessToken: auth.tokens.accessToken,
           reply: undefined,
           archive: true,
+        });
+        await finishBridgeObservabilityRun({
+          api,
+          client,
+          config,
+          accessToken: auth.tokens.accessToken,
+          run: bridgeRun,
+          status: "waiting",
+          outcomeCategory: "escalated",
+          summary: `Notification ${notification.id} is waiting for human approval.`,
+          metadata: { approvalStatus: claimAutomation.approvalStatus, stopReason: claimAutomation.stopReason },
         });
         continue;
       }
@@ -881,6 +1149,17 @@ async function processBridgeOnce(
           accessToken: auth.tokens.accessToken,
           reply: undefined,
           archive: true,
+        });
+        await finishBridgeObservabilityRun({
+          api,
+          client,
+          config,
+          accessToken: auth.tokens.accessToken,
+          run: bridgeRun,
+          status: "waiting",
+          outcomeCategory: "escalated",
+          summary: `Notification ${notification.id} is gated by human-in-the-loop policy.`,
+          metadata: { approvalStatus: claimAutomation.approvalStatus },
         });
         continue;
       }
@@ -906,6 +1185,18 @@ async function processBridgeOnce(
           api.logger.info(
             `[vinsta] Content guard blocked inbound ${notification.id}: ${inboundScreen.reason}`,
           );
+          await recordBridgeObservabilityEvent({
+            api,
+            client,
+            config,
+            accessToken: auth.tokens.accessToken,
+            run: bridgeRun,
+            notification,
+            eventType: "observability.guardrail.blocked",
+            severity: "warning",
+            message: `Inbound content guard blocked ${notification.id}: ${inboundScreen.reason}`,
+            attributes: { reason: inboundScreen.reason },
+          });
           commandCompleted = true;
           const blockedCompletion: PendingBridgeCompletion = {
             notificationId: notification.id,
@@ -926,8 +1217,33 @@ async function processBridgeOnce(
             if (blockedCompletion.humanNotification) {
               await dedupDispatchHumanNotification(api, config, blockedCompletion.humanNotification, dispatchedNotificationIds);
             }
+            await finishBridgeObservabilityRun({
+              api,
+              client,
+              config,
+              accessToken: auth.tokens.accessToken,
+              run: bridgeRun,
+              status: "denied",
+              outcomeCategory: "blocked",
+              summary: `Inbound content guard blocked ${notification.id}.`,
+              metadata: { reason: inboundScreen.reason },
+            });
           } catch (error) {
             pendingCompletions.set(notification.id, blockedCompletion);
+            await finishBridgeObservabilityRun({
+              api,
+              client,
+              config,
+              accessToken: auth.tokens.accessToken,
+              run: bridgeRun,
+              status: "waiting",
+              outcomeCategory: "error",
+              summary: `Blocked notification ${notification.id} completion is queued for retry.`,
+              metadata: {
+                reason: inboundScreen.reason,
+                error: error instanceof Error ? error.message : String(error),
+              },
+            });
             api.logger.error(
               `[vinsta] Failed to complete blocked notification ${notification.id}: ${
                 error instanceof Error ? error.message : String(error)
@@ -962,14 +1278,43 @@ async function processBridgeOnce(
             `Reply with just the option text (e.g. "permit always").`,
         };
 
+        const grantCommandStartedAt = new Date().toISOString();
         const result = await runBridgeCommand(
           config.bridgeCommand,
           grantPrompt,
           config.handle,
+          {
+            traceContext: bridgeRun?.traceContext ?? null,
+            observabilityRunId: bridgeRun?.id ?? null,
+            commandSpanId: bridgeRun?.commandSpanId ?? null,
+          },
         );
 
         if (result.exitCode !== 0) {
+          await recordBridgeCommandSpan({
+            api,
+            client,
+            config,
+            accessToken: auth.tokens.accessToken,
+            run: bridgeRun,
+            name: "openclaw.bridge.grant_review",
+            status: "failed",
+            startedAt: grantCommandStartedAt,
+            attributes: { exitCode: result.exitCode },
+            errorMessage: result.stderr || result.stdout || `exit ${result.exitCode}`,
+          });
           await surfaceBridgeFailure(notification, claimedAt);
+          await finishBridgeObservabilityRun({
+            api,
+            client,
+            config,
+            accessToken: auth.tokens.accessToken,
+            run: bridgeRun,
+            status: "failed",
+            outcomeCategory: "error",
+            summary: `OpenClaw bridge grant review command failed for ${notification.id}.`,
+            metadata: { exitCode: result.exitCode },
+          });
           api.logger.error(
             `[vinsta] Grant review command failed for ${notification.id} with exit ${result.exitCode}`,
           );
@@ -977,6 +1322,17 @@ async function processBridgeOnce(
         }
 
         commandCompleted = true;
+        await recordBridgeCommandSpan({
+          api,
+          client,
+          config,
+          accessToken: auth.tokens.accessToken,
+          run: bridgeRun,
+          name: "openclaw.bridge.grant_review",
+          status: "succeeded",
+          startedAt: grantCommandStartedAt,
+          attributes: { exitCode: result.exitCode },
+        });
 
         // Parse the agent's choice from the bridge response
         const rawAction = parseBridgeAction(result);
@@ -1031,8 +1387,32 @@ async function processBridgeOnce(
           api.logger.info(
             `[vinsta] Grant review for ${notification.id}: action=${grantAction}, granted=${grantResult.granted}`,
           );
+          await finishBridgeObservabilityRun({
+            api,
+            client,
+            config,
+            accessToken: auth.tokens.accessToken,
+            run: bridgeRun,
+            status: "succeeded",
+            outcomeCategory: grantAction === "deny" ? "policy_denied" : "answered",
+            summary: humanSummary,
+            metadata: { grantAction, granted: grantResult.granted, capability: capLabel },
+          });
         } catch (error) {
           await surfaceBridgeFailure(notification, claimedAt);
+          await finishBridgeObservabilityRun({
+            api,
+            client,
+            config,
+            accessToken: auth.tokens.accessToken,
+            run: bridgeRun,
+            status: "failed",
+            outcomeCategory: "error",
+            summary: `OpenClaw bridge failed to process grant review ${notification.id}.`,
+            metadata: {
+              error: error instanceof Error ? error.message : String(error),
+            },
+          });
           api.logger.error(
             `[vinsta] Failed to process grant review ${notification.id}: ${
               error instanceof Error ? error.message : String(error)
@@ -1045,16 +1425,45 @@ async function processBridgeOnce(
         continue;
       }
 
+      const commandStartedAt = new Date().toISOString();
       const preClass = classifyMessage(notification);
       const result = await runBridgeCommand(
         config.bridgeCommand,
         notification,
         config.handle,
-        { messageClass: preClass },
+        {
+          messageClass: preClass,
+          traceContext: bridgeRun?.traceContext ?? null,
+          observabilityRunId: bridgeRun?.id ?? null,
+          commandSpanId: bridgeRun?.commandSpanId ?? null,
+        },
       );
 
       if (result.exitCode !== 0) {
+        await recordBridgeCommandSpan({
+          api,
+          client,
+          config,
+          accessToken: auth.tokens.accessToken,
+          run: bridgeRun,
+          name: "openclaw.bridge.command",
+          status: "failed",
+          startedAt: commandStartedAt,
+          attributes: { exitCode: result.exitCode, messageClass: preClass },
+          errorMessage: result.stderr || result.stdout || `exit ${result.exitCode}`,
+        });
         await surfaceBridgeFailure(notification, claimedAt);
+        await finishBridgeObservabilityRun({
+          api,
+          client,
+          config,
+          accessToken: auth.tokens.accessToken,
+          run: bridgeRun,
+          status: "failed",
+          outcomeCategory: "error",
+          summary: `OpenClaw bridge command failed for ${notification.id}.`,
+          metadata: { exitCode: result.exitCode, messageClass: preClass },
+        });
         api.logger.error(
           `[vinsta] Command failed for ${notification.id} with exit ${result.exitCode}${
             result.stderr ? `: ${result.stderr}` : ""
@@ -1064,6 +1473,17 @@ async function processBridgeOnce(
       }
 
       commandCompleted = true;
+      await recordBridgeCommandSpan({
+        api,
+        client,
+        config,
+        accessToken: auth.tokens.accessToken,
+        run: bridgeRun,
+        name: "openclaw.bridge.command",
+        status: "succeeded",
+        startedAt: commandStartedAt,
+        attributes: { exitCode: result.exitCode, messageClass: preClass },
+      });
       const action = parseBridgeAction(result);
       const msgClass = classifyMessage(notification);
 
@@ -1095,6 +1515,18 @@ async function processBridgeOnce(
           api.logger.info(
             `[vinsta] Content guard blocked outbound for ${notification.id}: ${outboundScreen.reason}`,
           );
+          await recordBridgeObservabilityEvent({
+            api,
+            client,
+            config,
+            accessToken: auth.tokens.accessToken,
+            run: bridgeRun,
+            notification,
+            eventType: "observability.guardrail.blocked",
+            severity: "warning",
+            message: `Outbound content guard blocked reply for ${notification.id}: ${outboundScreen.reason}`,
+            attributes: { reason: outboundScreen.reason },
+          });
           action.reply = config.bridgeContentGuardBlockMessage;
           action.notifyHuman = `Outbound reply blocked by content guard: ${outboundScreen.reason}`;
         }
@@ -1163,8 +1595,43 @@ async function processBridgeOnce(
             await dedupDispatchHumanNotification(api, config, pendingCompletion.humanNotification, dispatchedNotificationIds);
           }
         }
+        await finishBridgeObservabilityRun({
+          api,
+          client,
+          config,
+          accessToken: auth.tokens.accessToken,
+          run: bridgeRun,
+          status: "succeeded",
+          outcomeCategory: pendingCompletion.reply ? "answered" : "delivered",
+          summary: pendingCompletion.reply
+            ? `OpenClaw bridge replied to ${notification.id}.`
+            : `OpenClaw bridge finalized ${notification.id}.`,
+          metadata: {
+            replied: Boolean(pendingCompletion.reply),
+            archived: pendingCompletion.archive,
+            notifiedHuman: Boolean(pendingCompletion.humanNotification),
+            messageClass: msgClass,
+          },
+        });
       } catch (error) {
         pendingCompletions.set(notification.id, pendingCompletion);
+        await finishBridgeObservabilityRun({
+          api,
+          client,
+          config,
+          accessToken: auth.tokens.accessToken,
+          run: bridgeRun,
+          status: "waiting",
+          outcomeCategory: "error",
+          summary: `OpenClaw bridge finalization for ${notification.id} is queued for retry.`,
+          metadata: {
+            error: error instanceof Error ? error.message : String(error),
+            replied: Boolean(pendingCompletion.reply),
+            archived: pendingCompletion.archive,
+            notifiedHuman: Boolean(pendingCompletion.humanNotification),
+            messageClass: msgClass,
+          },
+        });
         api.logger.error(
           `[vinsta] Failed to finalize notification ${notification.id}: ${
             error instanceof Error ? error.message : String(error)
@@ -1178,6 +1645,19 @@ async function processBridgeOnce(
       if (claimedAt && !commandCompleted) {
         await surfaceBridgeFailure(notification, claimedAt);
       }
+      await finishBridgeObservabilityRun({
+        api,
+        client,
+        config,
+        accessToken: auth.tokens.accessToken,
+        run: bridgeRun,
+        status: "failed",
+        outcomeCategory: "error",
+        summary: `OpenClaw bridge failed while processing ${notification.id}.`,
+        metadata: {
+          error: error instanceof Error ? error.message : String(error),
+        },
+      });
 
       api.logger.error(
         `[vinsta] ${error instanceof Error ? error.message : String(error)}`,

@@ -164,6 +164,20 @@ type NotificationMutationResponse = {
   authMode?: string;
 };
 
+type ObservabilityRunResponse = {
+  run: {
+    id: string;
+    traceId: string;
+  };
+};
+
+type ObservabilitySpanResponse = {
+  span: {
+    id: string;
+    spanId: string;
+  };
+};
+
 export type VinstaNotificationStreamEvent = {
   type: "snapshot" | "notification" | "heartbeat";
   handle: string;
@@ -913,6 +927,136 @@ export class VinstaClient {
           senderHandle: params.senderHandle,
           capability: params.capability || undefined,
           notificationId: params.notificationId,
+        }),
+      },
+    );
+  }
+
+  async createObservabilityRun(params: {
+    accessToken: string;
+    handle?: string;
+    traceId?: string;
+    rootSpanId?: string | null;
+    source: "openclaw" | "external" | "sdk";
+    name: string;
+    actorLabel?: string | null;
+    summary?: string | null;
+    metadata?: Record<string, unknown>;
+  }) {
+    return fetchJson<ObservabilityRunResponse>(
+      this.fetchImpl,
+      this.buildUrl("/api/observability/runs"),
+      {
+        method: "POST",
+        headers: withBearerHeaders(params.accessToken, {
+          "content-type": "application/json",
+        }),
+        body: JSON.stringify({
+          handle: params.handle ?? this.config.handle,
+          traceId: params.traceId ?? undefined,
+          rootSpanId: params.rootSpanId ?? undefined,
+          source: params.source,
+          name: params.name,
+          actorLabel: params.actorLabel ?? undefined,
+          summary: params.summary ?? undefined,
+          metadata: params.metadata ?? {},
+        }),
+      },
+    );
+  }
+
+  async finishObservabilityRun(params: {
+    accessToken: string;
+    handle?: string;
+    runId: string;
+    status: "succeeded" | "failed" | "waiting" | "denied" | "canceled" | "timed_out";
+    outcomeCategory?: string;
+    summary?: string | null;
+    metadata?: Record<string, unknown>;
+  }) {
+    return fetchJson<ObservabilityRunResponse>(
+      this.fetchImpl,
+      this.buildUrl(`/api/observability/runs/${params.runId}`),
+      {
+        method: "PATCH",
+        headers: withBearerHeaders(params.accessToken, {
+          "content-type": "application/json",
+        }),
+        body: JSON.stringify({
+          handle: params.handle ?? this.config.handle,
+          status: params.status,
+          outcomeCategory: params.outcomeCategory,
+          summary: params.summary ?? undefined,
+          metadata: params.metadata ?? {},
+        }),
+      },
+    );
+  }
+
+  async createObservabilitySpan(params: {
+    accessToken: string;
+    handle?: string;
+    runId: string;
+    name: string;
+    kind: "agent" | "tool" | "runtime" | "policy";
+    spanId?: string;
+    parentSpanId?: string | null;
+    status: "started" | "succeeded" | "failed" | "canceled";
+    startedAt?: string;
+    endedAt?: string;
+    attributes?: Record<string, unknown>;
+    errorType?: string | null;
+    errorMessageRedacted?: string | null;
+  }) {
+    return fetchJson<ObservabilitySpanResponse>(
+      this.fetchImpl,
+      this.buildUrl(`/api/observability/runs/${params.runId}/spans`),
+      {
+        method: "POST",
+        headers: withBearerHeaders(params.accessToken, {
+          "content-type": "application/json",
+        }),
+        body: JSON.stringify({
+          handle: params.handle ?? this.config.handle,
+          name: params.name,
+          kind: params.kind,
+          spanId: params.spanId ?? undefined,
+          parentSpanId: params.parentSpanId ?? undefined,
+          status: params.status,
+          startedAt: params.startedAt,
+          endedAt: params.endedAt,
+          attributes: params.attributes ?? {},
+          errorType: params.errorType ?? undefined,
+          errorMessageRedacted: params.errorMessageRedacted ?? undefined,
+        }),
+      },
+    );
+  }
+
+  async recordObservabilityEvent(params: {
+    accessToken: string;
+    handle?: string;
+    runId?: string | null;
+    eventType: string;
+    severity?: "debug" | "info" | "warning" | "error" | "critical";
+    message?: string;
+    attributes?: Record<string, unknown>;
+  }) {
+    return fetchJson<{ event: Record<string, unknown> }>(
+      this.fetchImpl,
+      this.buildUrl("/api/observability/events"),
+      {
+        method: "POST",
+        headers: withBearerHeaders(params.accessToken, {
+          "content-type": "application/json",
+        }),
+        body: JSON.stringify({
+          handle: params.handle ?? this.config.handle,
+          runId: params.runId ?? undefined,
+          eventType: params.eventType,
+          severity: params.severity ?? "info",
+          message: params.message ?? "",
+          attributes: params.attributes ?? {},
         }),
       },
     );
